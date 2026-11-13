@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <cstdio>
 
 using Microsoft::WRL::ComPtr;
 namespace PP = FrameGen::PlainPresent;
@@ -21,6 +22,8 @@ public:
     ComPtr<ID3D12Device> device;
     ComPtr<ID3D12CommandQueue> queue;
     ComPtr<ID3D12InfoQueue> info;
+    ComPtr<ID3D12InfoQueue1> callbackInfo;
+    DWORD callbackCookie = 0;
     ComPtr<IDXGISwapChain3> swap;
     ComPtr<ID3D12Fence> shared, complete;
     ComPtr<ID3D11Device5> device11;
@@ -47,6 +50,20 @@ public:
         Check(factory->EnumWarpAdapter(IID_PPV_ARGS(&adapter)), "EnumWarpAdapter");
         Check(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device)), "WARP D3D12 device");
         device.As(&info);
+        if (info) {
+            info->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, FALSE);
+            info->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, FALSE);
+        }
+        if (SUCCEEDED(device.As(&callbackInfo))) {
+            Check(callbackInfo->RegisterMessageCallback([](D3D12_MESSAGE_CATEGORY, D3D12_MESSAGE_SEVERITY severity,
+                D3D12_MESSAGE_ID id, LPCSTR description, void*) {
+                    if (severity <= D3D12_MESSAGE_SEVERITY_WARNING) {
+                        std::fprintf(stderr, "validation: id=%u severity=%u %s\n", static_cast<unsigned>(id),
+                            static_cast<unsigned>(severity), description);
+                        std::fflush(stderr);
+                    }
+                }, D3D12_MESSAGE_CALLBACK_IGNORE_FILTERS, nullptr, &callbackCookie), "validation callback");
+        }
         D3D12_COMMAND_QUEUE_DESC q{};
         Check(device->CreateCommandQueue(&q, IID_PPV_ARGS(&queue)), "queue");
         ComPtr<ID3D11Device> base;
@@ -98,7 +115,7 @@ public:
         Require(PP::QueryBaseSwapChain(swap.Get(), __uuidof(IUnknown), nullptr) == E_POINTER, "QI null out pointer");
         Resources();
     }
-    ~Smoke() { if (window) DestroyWindow(window); }
+    ~Smoke() { if (callbackInfo) callbackInfo->UnregisterMessageCallback(callbackCookie); if (window) DestroyWindow(window); }
 
     void Resources()
     {
@@ -133,6 +150,8 @@ public:
     {
         MSG msg{}; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
         const UINT index = swap->GetCurrentBackBufferIndex();
+        std::cerr << "frame: " << serial << " index=" << index << " allocator=" << allocators[index].Get()
+            << " need=" << submitted[index] << " completed=" << complete->GetCompletedValue() << "\n";
         Check(PP::Wait(complete.Get(), submitted[index], 5000), "allocator completion");
         Check(allocators[index]->Reset(), "allocator Reset");
         Check(lists[index]->Reset(allocators[index].Get(), nullptr), "list Reset");
