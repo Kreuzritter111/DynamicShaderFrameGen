@@ -27,6 +27,7 @@ namespace DX
 	public:
 		explicit com_exception(HRESULT hr) noexcept :
 			result(hr) {}
+		HRESULT code() const noexcept { return result; }
 		const char* what() const override
 		{
 			static char s_str[64] = {};

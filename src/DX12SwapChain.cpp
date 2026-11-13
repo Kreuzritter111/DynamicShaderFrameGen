@@ -3108,7 +3108,7 @@ namespace FrameGen
 			return Get().dx12SwapChain.Present(SyncInterval, Flags);
 		} catch (const DX::com_exception& e) {
 			SKSE::log::error("[FrameGen] Present exception at stage '{}': {} - skipping frame", Get().dx12SwapChain.lastStage(), e.what());
-			return E_FAIL;
+			return Get().dx12SwapChain.plainMode ? e.code() : E_FAIL;
 		}
 	}
 

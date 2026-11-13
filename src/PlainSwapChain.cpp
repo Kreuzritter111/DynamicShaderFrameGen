@@ -149,7 +149,8 @@ namespace FrameGen
         try {
             RefreshPlainBuffers(); // Reacquire old buffers too when resize was rejected.
             if (FAILED(hr)) {
-                SKSE::log::error("[PRESENT0] ResizeBuffers rejected hr=0x{:08X}", static_cast<unsigned>(hr));
+                SKSE::log::error("[PRESENT0] ResizeBuffers rejected hr=0x{:08X} requested={}x{} count={} format={} flags=0x{:x}",
+                    static_cast<unsigned>(hr), width, height, count, static_cast<unsigned>(format), flags);
                 return hr;
             }
             D3D11_TEXTURE2D_DESC desc{};
@@ -177,7 +178,7 @@ namespace FrameGen
             return S_OK;
         } catch (const DX::com_exception& e) {
             SKSE::log::error("[PRESENT0] ResizeBuffers resource rebuild failed: {}", e.what());
-            return E_FAIL;
+            return e.code();
         }
     }
 }
