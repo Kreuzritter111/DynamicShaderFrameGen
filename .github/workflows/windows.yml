@@ -80,6 +80,15 @@ jobs:
             }
           }
           if ($warpStatus -ne 0) {
+            if (Test-Path build/present-smoke/present_smoke.exe) {
+              & ./build/present-smoke/present_smoke.exe
+              $processStatus = $LASTEXITCODE
+              Write-Output ("::error title=WARP process exit::code={0} hex=0x{1:X8}" -f $processStatus, ($processStatus -band 0xffffffffL))
+            }
+            foreach ($library in @('d3d12.dll','d3d11.dll','dxgi.dll','d3d10warp.dll','msvcp140.dll','vcruntime140_1.dll')) {
+              $file = Join-Path $env:windir "System32/$library"
+              Write-Output "::notice title=Runtime dependency::$library exists=$(Test-Path $file)"
+            }
             if (Test-Path build/present-smoke/Testing/Temporary/LastTest.log) {
               Get-Content build/present-smoke/Testing/Temporary/LastTest.log | Select-Object -Last 40 | ForEach-Object {
                 $message = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')

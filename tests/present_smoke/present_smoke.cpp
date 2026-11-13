@@ -11,7 +11,7 @@
 using Microsoft::WRL::ComPtr;
 namespace PP = FrameGen::PlainPresent;
 struct Failure { HRESULT hr; const char* operation; };
-void Check(HRESULT hr, const char* operation) { if (FAILED(hr)) throw Failure{hr, operation}; }
+void Check(HRESULT hr, const char* operation) { std::cerr << "stage: " << operation << " hr=0x" << std::hex << static_cast<unsigned>(hr) << std::dec << "\n"; if (FAILED(hr)) throw Failure{hr, operation}; }
 void Require(bool ok, const char* what) { if (!ok) throw std::runtime_error(what); }
 
 class Smoke
@@ -219,6 +219,7 @@ public:
 
 int main()
 {
+    std::cerr << "stage: entered WARP main\n";
     try {
         Smoke smoke;
         for (unsigned i = 0; i < 6; ++i) smoke.Frame();
