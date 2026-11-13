@@ -79,7 +79,15 @@ jobs:
               Write-Output "::notice title=WARP result::$($_.Line)"
             }
           }
-          if ($warpStatus -ne 0) { throw "WARP validation failed with exit code $warpStatus" }
+          if ($warpStatus -ne 0) {
+            if (Test-Path build/present-smoke/Testing/Temporary/LastTest.log) {
+              Get-Content build/present-smoke/Testing/Temporary/LastTest.log | Select-Object -Last 40 | ForEach-Object {
+                $message = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+                Write-Output "::error title=WARP diagnostic::$message"
+              }
+            }
+            throw "WARP validation failed with exit code $warpStatus"
+          }
       - name: Configure, compile actual DLL, and test
         shell: pwsh
         run: |
