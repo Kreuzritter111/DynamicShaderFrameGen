@@ -105,9 +105,9 @@ namespace FrameGen
         const bool wasHealthy = resolveHealthy;
         resolveHealthy = false;
         D3D11_TEXTURE2D_DESC desc{}, depthDesc{}, motionDesc{};
-        static_cast<ID3D11Texture2D*>(color.texture)->GetDesc(&desc);
-        static_cast<ID3D11Texture2D*>(depth.texture)->GetDesc(&depthDesc);
-        static_cast<ID3D11Texture2D*>(motion.texture)->GetDesc(&motionDesc);
+        NativeTexture(color.texture)->GetDesc(&desc);
+        NativeTexture(depth.texture)->GetDesc(&depthDesc);
+        NativeTexture(motion.texture)->GetDesc(&motionDesc);
         const auto width = static_cast<std::uint32_t>(screenWidth);
         const auto height = static_cast<std::uint32_t>(screenHeight);
         if (desc.Width != width || desc.Height != height || desc.SampleDesc.Count != 1 ||
@@ -149,10 +149,10 @@ namespace FrameGen
         if (lastDrawFrame == engineFrameCount) return;
         lastDrawFrame = engineFrameCount;
         context->SwapDeviceContextState(isolated.Get(), &saved);
-        const bool ok = streamline.EvaluateNativeDlaa(context.Get(), color.texture, output.Get(),
-            depth.texture, motion.texture, width, height, *GetFrameBuffer(), settings);
+        const bool ok = streamline.EvaluateNativeDlaa(context.Get(), NativeTexture(color.texture), output.Get(),
+            NativeTexture(depth.texture), NativeTexture(motion.texture), width, height, *GetFrameBuffer(), settings);
         // Copy while the engine RTV/SRV bindings are still isolated.
-        if (ok) context->CopyResource(color.texture, output.Get());
+        if (ok) context->CopyResource(NativeTexture(color.texture), output.Get());
         context->SwapDeviceContextState(saved.Get(), nullptr);
         resolveHealthy = ok;
         if (wasHealthy && !ok) SKSE::log::error("[DLAA] resolve failed; custom jitter disabled until recovery");

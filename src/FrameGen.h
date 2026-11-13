@@ -46,6 +46,7 @@ namespace DX
 	}
 }
 
+#include "D3D11Boundary.h"
 #include "DX12SwapChain.h"
 #include "Streamline.h"
 

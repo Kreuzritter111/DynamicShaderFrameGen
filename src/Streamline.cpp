@@ -2169,7 +2169,7 @@ namespace FrameGen
 			auto& mvecTex = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR];
 			if (mvecTex.texture) {
 				D3D11_TEXTURE2D_DESC d{};
-				static_cast<ID3D11Texture2D*>(mvecTex.texture)->GetDesc(&d);
+				NativeTexture(mvecTex.texture)->GetDesc(&d);
 				opts.mvecBufferFormat = static_cast<std::uint32_t>(d.Format);
 			}
 		}

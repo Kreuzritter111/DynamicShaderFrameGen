@@ -6,4 +6,4 @@ if ! command -v cmd.exe >/dev/null; then
     echo "Windows/MSVC required; use GitHub Actions. No Linux DLL build is performed." >&2
     exit 1
 fi
-cmd.exe /c build_vs.bat
+MSYS_NO_PATHCONV=1 cmd.exe /c build_vs.bat

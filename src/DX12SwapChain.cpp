@@ -354,7 +354,7 @@ namespace FrameGen
 				auto& main = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMAIN];
 				if (main.texture) {
 					D3D11_TEXTURE2D_DESC dDesc{};
-					static_cast<ID3D11Texture2D*>(main.texture)->GetDesc(&dDesc);
+					NativeTexture(main.texture)->GetDesc(&dDesc);
 					// v0.56: eager interop texture fixed to the output resolution. It used to
 					// inherit the engine kMAIN desc (render resolution), while the lazy path
 					// below forces the output resolution - the same buffer came out at two
@@ -370,7 +370,7 @@ namespace FrameGen
 				auto& mvecTex = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR];
 				if (mvecTex.texture) {
 					D3D11_TEXTURE2D_DESC mDesc{};
-					static_cast<ID3D11Texture2D*>(mvecTex.texture)->GetDesc(&mDesc);
+					NativeTexture(mvecTex.texture)->GetDesc(&mDesc);
 					// v0.56: same as depth above - both creation paths now agree.
 					mDesc.Width = swapChainDesc.Width;
 					mDesc.Height = swapChainDesc.Height;
@@ -1685,7 +1685,7 @@ namespace FrameGen
 					auto& mvecTex = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR];
 					if (!depthWrapped && main.texture) {
 						D3D11_TEXTURE2D_DESC dDesc{};
-						static_cast<ID3D11Texture2D*>(main.texture)->GetDesc(&dDesc);
+						NativeTexture(main.texture)->GetDesc(&dDesc);
 						// v0.7.8：depth 共享纹理固定 = 输出分辨率（4K）——FSR3 FG 要求
 						// depth 与 color 输入同尺寸；引擎 depth 是渲染尺寸（低），
 						// CopyDepthToShared 采样放大到 4K
@@ -1698,7 +1698,7 @@ namespace FrameGen
 					}
 					if (!mvecWrapped && mvecTex.texture) {
 						D3D11_TEXTURE2D_DESC mDesc{};
-						static_cast<ID3D11Texture2D*>(mvecTex.texture)->GetDesc(&mDesc);
+						NativeTexture(mvecTex.texture)->GetDesc(&mDesc);
 						// v0.7.8：mvec 共享纹理固定 = 输出分辨率（4K）——FSR3 FG 要求与 color
 						// 同尺寸；CopyMvecToShared 采样放大（引擎 mvec 是渲染尺寸）
 						mDesc.Width = swapChainDesc.Width;
@@ -1727,12 +1727,12 @@ namespace FrameGen
 			if (auto* renderer = RE::BSGraphics::Renderer::GetSingleton()) {
 				auto& depthTex = renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN];
 				auto& mvecTex = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR];
-				auto* depth11 = depthTex.texture ? static_cast<ID3D11Texture2D*>(depthTex.texture) : nullptr;
-				auto* mvec11 = mvecTex.texture ? static_cast<ID3D11Texture2D*>(mvecTex.texture) : nullptr;
+				auto* depth11 = depthTex.texture ? NativeTexture(depthTex.texture) : nullptr;
+				auto* mvec11 = mvecTex.texture ? NativeTexture(mvecTex.texture) : nullptr;
 				if (mvec11 && mvecTex.SRV)
-					CopyMvecToShared(mvecTex.SRV, mvecWrapped->rtv);
+					CopyMvecToShared(NativeView(mvecTex.SRV), mvecWrapped->rtv);
 				if (depth11)
-					CopyDepthToShared(depthTex.depthSRV, depthWrapped->rtv);
+					CopyDepthToShared(NativeView(depthTex.depthSRV), depthWrapped->rtv);
 			}
 		}
 

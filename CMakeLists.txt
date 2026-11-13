@@ -60,32 +60,17 @@ add_library(${PROJECT_NAME} SHARED
 )
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
+# CommonLib headers are large; parse them once per target rather than per source.
+target_precompile_headers(${PROJECT_NAME} PRIVATE <RE/Skyrim.h> <SKSE/SKSE.h>)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN SKYRIM NV_WINDOWS)
 
+# Keep MSVC C++ flags out of the Windows resource compiler invocation.
+# /utf-8 preserves the bilingual menu in BOM-less sources.
 target_compile_options(${PROJECT_NAME} PRIVATE
-    /MP
-    /W4
-    # v1.46: the menu is bilingual and the sources are UTF-8 WITHOUT a BOM.
-    # Without /utf-8 MSVC decodes a BOM-less file using the system ANSI code page
-    # (936/GBK here), so every Chinese literal would be mojibake -- and /wd4819
-    # below was already suppressing the one warning that would have told us
-    # ("character cannot be represented in the current code page"), which is
-    # exactly how that class of breakage stays invisible.
-    # /utf-8 sets BOTH source and execution charset to UTF-8, which is what the
-    # C++23 string literals in this file assume.
-    /utf-8
-    # 4200 arrays of unknown size; 4819 see above; 4996 deprecated CRT;
-    # 4471 base class without dtor (CommonLibSSE)
-    /wd4200
-    /wd4819
-    /wd4996
-    /wd4471
-)
-
-target_compile_options(${PROJECT_NAME} PUBLIC
-    "$<$<CONFIG:DEBUG>:/fp:strict;/ZI;/Od;/Gy>"
-    "$<$<CONFIG:RELEASE>:/Zi;/fp:fast;/GL;/Gy-;/O2;/Ob2;/Oi;/Ot;/Oy>"
+    "$<$<COMPILE_LANGUAGE:CXX>:/MP;/W4;/utf-8;/wd4200;/wd4819;/wd4996;/wd4471>"
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:/fp:strict;/ZI;/Od;/Gy>"
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:/Zi;/fp:fast;/GL;/Gy-;/O2;/Ob2;/Oi;/Ot;/Oy>"
 )
 
 # CommonLibSSE-NG 源码

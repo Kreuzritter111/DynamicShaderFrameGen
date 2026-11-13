@@ -177,8 +177,8 @@ cmake --install build/windows-release --prefix package
    мод PureDark и его конфигурацию для отката. Не меняйте основной профиль.
 2. В тестовом профиле отключите Skyrim Upscaler и UpscalerBasePlugin, другие
    upscaler/FG/NGX injection плагины. Не удаляйте их с диска. ENB NAT III оставьте.
-3. Установите ZIP `DynamicShaderFrameGen-SE1597-test` из **успешного** Actions run
-   как отдельный мод. Корень должен содержать `SKSE/Plugins` и `Shaders`, без
+3. Скачайте Actions artifact и распакуйте его внешнюю ZIP-обёртку. Установите внутренний ZIP `DynamicShaderFrameGen-SE1597-test` из **успешного** Actions run
+   как отдельный мод с приоритетом выше старого DynamicShaderFrameGen и его INI в Overwrite. Проверьте выигрывающий INI в MO2. Корень должен содержать `SKSE/Plugins` и `Shaders`, без
    дополнительного `Data/`. Сверьте COMMIT.txt и SHA256.txt.
 4. Нужны уже установленные SKSE 2.0.20, SE Address Library и VC++ x64 runtime.
    Официальные NVIDIA runtime DLL приобретайте из разрешённого SDK/package
