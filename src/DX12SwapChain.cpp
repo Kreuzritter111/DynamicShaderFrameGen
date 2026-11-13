@@ -128,7 +128,8 @@ namespace FrameGen
 	void DX12SwapChain::CreateSwapChain(IDXGIAdapter* adapter, DXGI_SWAP_CHAIN_DESC a_swapChainDesc, bool a_enableFrameGeneration, bool a_dlssgMode, std::uint32_t a_qualityMode)
 	{
 		// v0.27：dlssgMode 必须先赋值（CreateD3D12Device 内据此决定是否延迟 slInit）
-		dlssgMode = a_enableFrameGeneration && a_dlssgMode;
+		plainMode = !a_enableFrameGeneration;
+        dlssgMode = a_enableFrameGeneration && a_dlssgMode;
 
 		// v0.52：记录本次构建实际生效的 Provider。Provider 是**一次性**读取的——它决定
 		// dlssgMode / BufferCount / D3D12 proxy 路径，全都在这里定型；运行中改 INI 或 GUI
@@ -256,10 +257,17 @@ namespace FrameGen
 			return;
 		}
 
-		// v0.33：GetBuffer 按实际 BufferCount（dlssgMode=3 对齐 CS pacer 余量；FSR3=2）
-		const UINT bufferCount = dlssgMode ? 3 : 2;
-		for (UINT i = 0; i < bufferCount; i++)
-			DX::ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&swapChainBuffers[i])));
+        // Use the actual descriptor, not the caller's pre-flip description.
+        if (plainMode) DX::ThrowIfFailed(swapChain->GetDesc1(&swapChainDesc));
+        const UINT bufferCount = plainMode ? swapChainDesc.BufferCount : (dlssgMode ? 3 : 2);
+        for (UINT i = 0; i < bufferCount; ++i)
+            DX::ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&swapChainBuffers[i])));
+        if (plainMode) {
+            DX::ThrowIfFailed(d3d12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(plainCompletion.put())));
+            SKSE::log::info("[PRESENT0] created: {}x{} format={} buffers={} effect={} flags=0x{:x}",
+                swapChainDesc.Width, swapChainDesc.Height, static_cast<unsigned>(swapChainDesc.Format),
+                swapChainDesc.BufferCount, static_cast<unsigned>(swapChainDesc.SwapEffect), swapChainDesc.Flags);
+        }
 
 		frameIndex = swapChain->GetCurrentBackBufferIndex();
 		SKSE::log::info("[FrameGen] D3D12 FG swapchain created ({}x{}, format {})",
@@ -1463,6 +1471,9 @@ namespace FrameGen
 	HRESULT DX12SwapChain::Present(UINT SyncInterval, UINT Flags)
 	{
 		auto& fg = Get();
+        std::unique_lock<std::mutex> plainLock(plainMutex, std::defer_lock);
+        if (plainMode && !plainLock.try_lock()) return DXGI_ERROR_WAS_STILL_DRAWING;
+        if (plainMode && (Flags & DXGI_PRESENT_TEST)) return swapChain->Present(SyncInterval, Flags);
 
 		// v0.62: stamp every exit path (there are three return S_OK branches). The
 		// watchdog compares this against its own clock: a stamp that stops moving
@@ -1871,6 +1882,8 @@ namespace FrameGen
 		if (!dlssgMode && FidelityFX::GetSingleton()->module) {
 			FidelityFX::GetSingleton()->Present(fg.fgActive.load());
 		}
+
+        if (plainMode) return PresentPlain(SyncInterval, Flags);
 
 		// v0.75: the cycle breaker.
 		//
@@ -3102,7 +3115,11 @@ namespace FrameGen
 
 	HRESULT STDMETHODCALLTYPE DXGISwapChainProxy::SetFullscreenState(BOOL Fullscreen, _In_opt_ IDXGIOutput* pTarget)
 	{
-		return swapChain->SetFullscreenState(Fullscreen, pTarget);
+        if (Get().dx12SwapChain.plainMode && Get().settings.forceBorderless && Fullscreen) {
+            SKSE::log::warn("[PRESENT0] exclusive fullscreen request suppressed: ForceBorderless=1; retaining windowed flip chain");
+            return swapChain->SetFullscreenState(FALSE, nullptr);
+        }
+        return swapChain->SetFullscreenState(Fullscreen, pTarget);
 	}
 
 	HRESULT STDMETHODCALLTYPE DXGISwapChainProxy::GetFullscreenState(_Out_opt_ BOOL* pFullscreen, _COM_Outptr_opt_result_maybenull_ IDXGIOutput** ppTarget)
@@ -3120,7 +3137,9 @@ namespace FrameGen
 
 	HRESULT STDMETHODCALLTYPE DXGISwapChainProxy::ResizeBuffers(UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags)
 	{
-		return swapChain->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
+        if (Get().dx12SwapChain.plainMode)
+            return Get().dx12SwapChain.ResizePlain(BufferCount, Width, Height, NewFormat, SwapChainFlags);
+        return swapChain->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
 	}
 
 	HRESULT STDMETHODCALLTYPE DXGISwapChainProxy::ResizeTarget(_In_ const DXGI_MODE_DESC* pNewTargetParameters)

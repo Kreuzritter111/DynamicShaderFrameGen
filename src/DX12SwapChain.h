@@ -21,6 +21,7 @@
 // v0.62: hang forensics (watchdog thread + atomic frame stamps)
 #include <atomic>
 #include <thread>
+#include <mutex>
 // v0.81: std::string is used as a return type by DescribePresentThreads().
 #include <string>
 
@@ -127,6 +128,17 @@ namespace FrameGen
 		DXGI_SWAP_CHAIN_DESC1 swapChainDesc;
 
 		ffx::Context ffxSwapChainContext;  // FFX FG swapchain 上下文（帧缓冲管理）
+
+        bool plainMode = false;
+        std::mutex plainMutex;
+        winrt::com_ptr<ID3D12Fence> plainCompletion;
+        UINT64 plainSubmitted[3]{};
+        UINT64 plainSerial = 0;
+        unsigned plainFailures = 0;
+        HRESULT PresentPlain(UINT syncInterval, UINT flags);
+        HRESULT ResizePlain(UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags);
+        void LogPlainFailure(HRESULT result, UINT sync, UINT flags, UINT usedIndex);
+        void RefreshPlainBuffers();
 
 		bool dlssgMode = false;  // v0.3：NVIDIA DLSSG 模式（普通 swapchain + SL 插帧）
 

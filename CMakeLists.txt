@@ -41,6 +41,7 @@ add_library(${PROJECT_NAME} SHARED
     src/NativeDlaa.cpp
     src/FrameGen.cpp
     src/DX12SwapChain.cpp
+    src/PlainSwapChain.cpp
     src/Streamline.cpp
     src/FidelityFX.cpp
     src/ImguiMenu.cpp
@@ -100,7 +101,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE d3d12.lib d3d11.lib dxgi.lib d3dco
 find_path(DETOURS_INCLUDE_DIR detours/detours.h REQUIRED)
 find_library(DETOURS_LIBRARY NAMES detours REQUIRED)
 target_include_directories(${PROJECT_NAME} PRIVATE "${DETOURS_INCLUDE_DIR}")
-target_link_libraries(${PROJECT_NAME} PRIVATE "${DETOURS_LIBRARY}" version wintrust crypt32)
+target_link_libraries(${PROJECT_NAME} PRIVATE "${DETOURS_LIBRARY}" version wintrust crypt32 dxguid)
 
 # v0.5.2：d3d11 延迟加载（/DELAYLOAD）——ENB 整合包根因修复：
 # 游戏目录有 ENB 的 d3d11.dll 代理，SKSE 加载本插件时若静态解析 d3d11.dll →
@@ -136,7 +137,7 @@ endif()
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION SKSE/Plugins)
 install(FILES profiles/SE1597-Native-DLAA.ini DESTINATION SKSE/Plugins RENAME DynamicShaderFrameGen.ini)
 install(DIRECTORY Shaders/ DESTINATION Shaders FILES_MATCHING PATTERN "*.hlsl" PATTERN "*.hlsli")
-install(FILES LICENSE EXCEPTIONS.md docs/SE1597_TESTING.md DESTINATION .)
+install(FILES LICENSE EXCEPTIONS.md docs/SE1597_TESTING.md docs/FG0_PRESENT_TEST.md DESTINATION .)
 
 if(BUILD_TESTING)
     add_executable(render_policy_tests tests/render_policy.cpp)

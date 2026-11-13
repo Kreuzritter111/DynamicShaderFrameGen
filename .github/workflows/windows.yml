@@ -82,11 +82,12 @@ jobs:
           if (!(Test-Path package/SKSE/Plugins/DynamicShaderFrameGen.dll)) { throw 'DLL was not built' }
           Get-FileHash package/SKSE/Plugins/DynamicShaderFrameGen.dll -Algorithm SHA256 | Format-List | Out-File package/SHA256.txt
           git rev-parse HEAD | Out-File package/COMMIT.txt
-          Compress-Archive -Path package/* -DestinationPath DynamicShaderFrameGen-SE1597-test.zip
+          Copy-Item build/present-smoke/Testing/Temporary/LastTest.log package/VALIDATION-WARP.txt
+          'FG=0, NR=0 menu/save-load test. Read FG0_PRESENT_TEST.md; build commit is in COMMIT.txt.' | Set-Content package/NEXT-TEST.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: DynamicShaderFrameGen-SE1597-test
-          path: DynamicShaderFrameGen-SE1597-test.zip
+          name: DynamicShaderFrameGen-FG0-Present-${{ github.sha }}
+          path: package/
           if-no-files-found: error
       - name: Upload configure/build diagnostics
         if: failure()
@@ -95,6 +96,7 @@ jobs:
           name: windows-build-diagnostics
           path: |
             .ci-logs/
+            build/present-smoke/Testing/Temporary/LastTest.log
             build/windows-release/CMakeCache.txt
             build/windows-release/CMakeFiles/CMakeConfigureLog.yaml
             .deps/vcpkg/buildtrees/**/config-*.log
