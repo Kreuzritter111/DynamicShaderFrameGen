@@ -53,6 +53,62 @@ RTX 5060 8 GB, 1920×1080, MO2 Portable, NAT.ENB III. Обновление до 
 * [Независимая копия публичных NGX headers](https://github.com/NVIDIA/DLSS/blob/9981c6350dc58c0ce21f024fd65e31e851c31689/include/nvsdk_ngx_defs.h)
 * [Streamline DLSS integration guide](https://github.com/NVIDIAGameWorks/Streamline/blob/625db07d4bca5abc67d781c42af7e7fb0761f1b6/docs/ProgrammingGuideDLSS.md)
 
+## Проверка экземпляра NR DLL на игровом ПК
+
+Пользователь сообщил: драйвер **621.24**, RTX 5060 8 GB, DLL **310.8.0.0**
+из Dynamic Shader FrameGen **v0.48.0.0 от 11.09.2026**, Nexus Mods **190154**.
+Первоначальный источник NVIDIA неизвестен. На физическом файле из MO2
+`Get-AuthenticodeSignature` вернул **HashMismatch**, хотя Subject сертификата
+содержит `CN=NVIDIA Corporation`.
+
+Это подтверждает несоответствие Authenticode digest подписанному содержимому.
+Subject читается и у файла с недействительной подписью; он не отменяет HashMismatch.
+Причиной могут быть изменение после подписания либо повреждение файла/архива.
+Результат не доказывает, кто изменил файл, и не позволяет приписать вину Nexus
+или автору без проверки исходного архива. Это также пока не доказывает, что
+именно подпись вызвала старый NGX PlatformError: в старой DLL был отдельный
+обход проверки пути вызывающего модуля.
+
+**Этот экземпляр не использовать для NR-теста. Не отключать WinVerifyTrust и
+не возвращать path proxy.** Новый wrapper отклоняет не прошедший проверку файл
+до собственной LoadLibraryExW; для bad digest типичен код `0x80096010`
+(`TRUST_E_BAD_DIGEST`). NGX Feature 18 с этим файлом не следует исследовать,
+пока он не заменён проверенным артефактом из разрешённого источника.
+
+Следующие проверки не загружают DLL и не меняют игру:
+
+```powershell
+# Выполнить для установленной копии и для свежей распаковки архива в отдельную
+# временную папку. Указать реальные физические пути, не виртуальный Data MO2.
+Get-FileHash -Algorithm SHA256 -LiteralPath 'полный путь к nvngx_dlssnr.dll'
+Get-AuthenticodeSignature -LiteralPath 'полный путь к nvngx_dlssnr.dll' |
+  Select-Object Status, StatusMessage,
+    @{Name='Signer';Expression={$_.SignerCertificate.Subject}}
+Get-Item -LiteralPath 'полный путь к nvngx_dlssnr.dll' |
+  Select-Object Length,@{Name='Version';Expression={$_.VersionInfo.FileVersion}}
+```
+
+* Свежая копия Valid, установленная HashMismatch и другой SHA256: различие
+  появилось между распаковкой и установленной копией; проверить копирование,
+  локальные патчеры, антивирусный карантин и выигрывающий файл MO2.
+* Обе копии имеют одинаковый SHA256 и HashMismatch: проблема воспроизводится
+  в этом архиве. Повторная загрузка из разрешённого источника и проверка
+  опубликованного hash архива (если есть) отличат повреждённую загрузку от
+  такого же артефакта в распространяемом пакете.
+* Только Valid с ожидаемым издателем NVIDIA допускает следующий этап. Он
+  подтверждает целостность подписи, но ещё не поддержку private Feature 18,
+  правильность ABI, право распространения или отсутствие runtime-инъекций.
+
+Проверьте также подписи остальных NVIDIA runtime DLL из того же архива;
+результат для NR не доказывает ни их повреждение, ни их целостность. Для DLAA
+используйте согласованные официальные компоненты Streamline 2.14.16, которым
+соответствуют закреплённые headers, с соблюдением лицензии поставщика.
+
+Драйвер 621.24 выше общего минимума Streamline README (512.15), но публичный
+SDK не определяет здесь отдельные требования DLSSNR. Делать вывод о поддержке
+Feature 18 по одному номеру драйвера нельзя. Для окончательной связи с вылетом
+нужны полный NGX log и Crash Logger stack/dump из запуска с доверенным runtime.
+
 ## Версионно-зависимые места
 
 Наличие SE ID подтверждено в исходниках; соответствие реальным инструкциям
@@ -186,8 +242,9 @@ cmake --install build/windows-release --prefix package
    `sl.interposer.dll`, `sl.common.dll`, `sl.dlss.dll`, `nvngx_dlss.dll` в
    `Data/Shaders/Upscaling/Streamline/`. Случайное смешивание версий не тестируется.
 5. Игра: 1920×1080. Для теста именно DLAA выключите vanilla TAA/FXAA в INI
-   тестового профиля (`bUseTAA=0`, `bFXAAEnabled=0`) и дополнительное ENB AA,
-   если оно включено. Не переносите эти изменения в основной профиль до A/B.
+   тестового профиля (`bUseTAA=0`, `bFXAAEnabled=0`). Параметры NAT.ENB оставьте
+   прежними и одинаковыми в обоих A/B-запусках. Не переносите изменения INI
+   в основной профиль до сравнения.
 6. Сначала штатный профиль из ZIP: FG=0, QualityMode=0, scale=1.0, NR=0,
    sharpness=0, без диагностических pixel-probe/overlay и legacy input/menu hooks.
    Ожидается `[DLAA] evaluated=true native=1920x1080` регулярно. Только
@@ -219,6 +276,14 @@ g++ -std=c++17 -Wall -Wextra -Werror -Isrc tests/render_policy.cpp -o /tmp/rende
 /tmp/render-policy
 ```
 
-Полная Windows-компиляция и её результат фиксируются отдельно по Actions run.
+Полная Windows x64 компиляция **успешно выполнена** для source commit
+`c617937393f1c2db00a61dfd460494a1169d7285`:
+[Actions run 43395776301](https://github.com/Kreuzritter111/DynamicShaderFrameGen/actions/runs/43395776301).
+На Windows также прошёл шаг Python-регрессий, build script завершил CTest без
+ошибки. Проверка существования построенной DLL, установка в staging,
+упаковка и upload artifact **DynamicShaderFrameGen-SE1597-test** прошли
+успешно (687 KB). Внешняя обёртка GitHub artifact содержит внутренний MO2 ZIP.
+Последующее дополнение аудита о HashMismatch изменяет только документацию,
+а не исходники собранной DLL.
 Linux-проверки **не подтверждают** компиляцию Windows API translation units,
 правильность hook offsets, качество DLAA, совместимость ENB или работоспособность NR.
