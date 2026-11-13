@@ -286,7 +286,7 @@ namespace FrameGen
 		DX::ThrowIfFailed(d3d12Device->CreateSharedHandle(d3d12Fence.get(), nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle));
 		DX::ThrowIfFailed(d3d11Device->OpenSharedFence(sharedFenceHandle, IID_PPV_ARGS(&d3d11Fence)));
 		CloseHandle(sharedFenceHandle);
-		fenceValue = 1;
+		fenceValue = plainMode ? 2 : 1; // First D3D11 release must exceed the shared fence initial value (1).
 
 		// v0.5.10（CS 同款，manual hooking 必需）：把 D3D12 swapchain upgrade 为 SL 代理
 		// 接口——SL 由此进入呈现路径（每帧调 common 插件 presentCommon），DLSSG 插件才会

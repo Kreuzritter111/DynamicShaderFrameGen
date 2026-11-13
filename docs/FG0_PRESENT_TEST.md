@@ -22,6 +22,9 @@
 * После ExecuteCommandLists исключение из Present пропускало queue Signal
   и обратный D3D11 Wait. При следующем вызове общий fence/counter уже не
   доказывал завершение команд использованного allocator.
+* Первый D3D11 release использовал значение 1, равное начальному значению
+  shared fence. Такое ожидание не доказывало готовность первой D3D11-записи;
+  в новом plain path первый release строго больше начального значения.
 * Старый guard после 50 ms таймаута всё равно вызывал allocator Reset.
 * ResizeBuffers передавался напрямую, хотя плагин удерживал реальные
   backbuffer resources и записанные command lists. Согласно DXGI это мешает

@@ -33,7 +33,7 @@ public:
     std::array<ComPtr<ID3D12GraphicsCommandList>, 3> lists;
     std::array<UINT64, 3> submitted{};
     UINT width = 160, height = 90;
-    UINT64 serial = 0, timeline = 0;
+    UINT64 serial = 0, timeline = 1;
     unsigned flipped = 0;
 
     Smoke()
@@ -55,7 +55,7 @@ public:
             nullptr, 0, D3D11_SDK_VERSION, &base, nullptr, &ctx), "WARP D3D11 device");
         Check(base.As(&device11), "D3D11Device5");
         Check(ctx.As(&context11), "D3D11Context4");
-        Check(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&shared)), "shared fence");
+        Check(device->CreateFence(1, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&shared)), "shared fence");
         HANDLE handle = nullptr;
         Check(device->CreateSharedHandle(shared.Get(), nullptr, GENERIC_ALL, nullptr, &handle), "fence handle");
         HRESULT hr = device11->OpenSharedFence(handle, IID_PPV_ARGS(&shared11));
