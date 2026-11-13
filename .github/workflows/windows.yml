@@ -112,5 +112,11 @@ jobs:
               '```text' >> $env:GITHUB_STEP_SUMMARY
               $errors | Select-Object -Last 15 | Out-String -Width 220 >> $env:GITHUB_STEP_SUMMARY
               '```' >> $env:GITHUB_STEP_SUMMARY
+              # Public run annotations make the concrete build failure reviewable
+              # even when viewing/downloading full Actions logs requires sign-in.
+              $errors | Select-Object -Last 12 | ForEach-Object {
+                $message = $_.Line.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+                Write-Output "::error title=Build diagnostic::$message"
+              }
             }
           }
