@@ -16,6 +16,7 @@
 // 注意：CommonLib 头必须最先（DX12SwapChain.h 含 Windows API 头，REX::W32 要求）
 #include "FrameGen.h"
 #include "RenderPolicy.h"
+#include "PlainPresent.h"
 
 #include "DX12SwapChain.h"
 
@@ -3053,6 +3054,15 @@ namespace FrameGen
 
 	HRESULT STDMETHODCALLTYPE DXGISwapChainProxy::QueryInterface(REFIID riid, void** ppvObj)
 	{
+        if (Get().dx12SwapChain.plainMode) {
+            const HRESULT hr = PlainPresent::QueryBaseSwapChain(this, riid, ppvObj);
+            if (hr == E_NOINTERFACE) {
+                static std::atomic<unsigned> reported{0};
+                if (reported.fetch_add(1) < 8)
+                    SKSE::log::info("[PRESENT0] proxy QI rejected unsupported interface {:08X}; backend is not exposed", riid.Data1);
+            }
+            return hr;
+        }
 		return swapChain->QueryInterface(riid, ppvObj);
 	}
 

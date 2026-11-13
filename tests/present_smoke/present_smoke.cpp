@@ -88,6 +88,14 @@ public:
         Check(factory->CreateSwapChainForHwnd(queue.Get(), window, &desc, nullptr, nullptr, &chain), "CreateSwapChainForHwnd");
         Check(chain.As(&swap), "swapchain3");
         factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER);
+        void* identity = nullptr;
+        Check(PP::QueryBaseSwapChain(swap.Get(), __uuidof(IUnknown), &identity), "proxy IUnknown policy");
+        Require(identity == static_cast<IUnknown*>(swap.Get()), "proxy identity changed");
+        static_cast<IUnknown*>(identity)->Release();
+        identity = nullptr;
+        Require(PP::QueryBaseSwapChain(swap.Get(), __uuidof(IDXGISwapChain1), &identity) == E_NOINTERFACE && !identity,
+            "base-only proxy must not expose extended backend interfaces");
+        Require(PP::QueryBaseSwapChain(swap.Get(), __uuidof(IUnknown), nullptr) == E_POINTER, "QI null out pointer");
         Resources();
     }
     ~Smoke() { if (window) DestroyWindow(window); }

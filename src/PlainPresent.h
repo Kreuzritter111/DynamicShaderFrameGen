@@ -5,6 +5,21 @@
 
 namespace FrameGen::PlainPresent
 {
+    inline HRESULT QueryBaseSwapChain(IDXGISwapChain* self, REFIID iid, void** result)
+    {
+        if (!result) return E_POINTER;
+        *result = nullptr;
+        if (iid == __uuidof(IUnknown) || iid == __uuidof(IDXGIObject) ||
+            iid == __uuidof(IDXGIDeviceSubObject) || iid == __uuidof(IDXGISwapChain)) {
+            *result = self;
+            self->AddRef();
+            return S_OK;
+        }
+        // The D3D11-facing adapter implements only the base swapchain ABI.
+        // Returning the D3D12 backend here lets clients bypass GetBuffer/Present.
+        return E_NOINTERFACE;
+    }
+
     inline UINT ResizeCount(UINT requested, UINT current) { return requested == 0 ? current : (requested == 1 ? 2 : requested); }
     inline UINT ResizeFlags(UINT requested, UINT created)
     {
