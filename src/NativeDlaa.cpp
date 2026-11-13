@@ -145,6 +145,9 @@ namespace FrameGen
                     __uuidof(ID3D11Device), &selected, &isolated))) return;
             stateDevice = d3d11Device;
         }
+        static std::uint32_t lastDrawFrame = UINT32_MAX;
+        if (lastDrawFrame == engineFrameCount) return;
+        lastDrawFrame = engineFrameCount;
         context->SwapDeviceContextState(isolated.Get(), &saved);
         const bool ok = streamline.EvaluateNativeDlaa(context.Get(), color.texture, output.Get(),
             depth.texture, motion.texture, width, height, *GetFrameBuffer(), settings);

@@ -96,3 +96,17 @@ jobs:
             .deps/vcpkg/buildtrees/**/config-*.log
             .deps/vcpkg/buildtrees/**/install-*.log
           if-no-files-found: ignore
+      - name: Diagnostic summary
+        if: failure()
+        shell: pwsh
+        run: |
+          '### Failed validation/build diagnostics' >> $env:GITHUB_STEP_SUMMARY
+          Get-ChildItem .ci-logs/*.log -ErrorAction SilentlyContinue | ForEach-Object {
+            $errors = Select-String -Path $_.FullName -Pattern 'error|fatal|failed|exception|traceback|Unicode' -Context 2,4
+            if ($errors) {
+              "#### $($_.Name)" >> $env:GITHUB_STEP_SUMMARY
+              '```text' >> $env:GITHUB_STEP_SUMMARY
+              $errors | Select-Object -Last 15 | Out-String -Width 220 >> $env:GITHUB_STEP_SUMMARY
+              '```' >> $env:GITHUB_STEP_SUMMARY
+            }
+          }
