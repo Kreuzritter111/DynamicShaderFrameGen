@@ -40,10 +40,8 @@ namespace
 			// 输入开关键（Home）——DataLoaded 后 BSInputDeviceManager 可用
 			FrameGen::Get().InstallInputHook();
             FrameGen::Get().InstallNativeDlaaHooks();
-			// v0.50（用户拍板拔掉 DLSS 超分）：移除 InstallDRSHook + InstallMainPostProcessingHook。
-			// 引擎回到 2560 全分辨率渲染（无 DRS、无 DLSS 超分、无 Halton jitter），
-			// 只保留 DLSS5(DLSSNR) + FSR3 FG 串联。DLSS 超分/DRS/jitter 相关代码保留但不调用。
-			// DLSS5 Neural Rendering 入口（MenuManagerDrawInterfaceStart，UI 绘制前）
+            // The native DLAA hooks above are independent of the optional
+            // legacy menu hook; NR still runs through the Present interop path.
 			FrameGen::Get().InstallMenuHook();
 			break;
 		}

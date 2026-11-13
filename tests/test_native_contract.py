@@ -20,16 +20,16 @@ class NativeContract(unittest.TestCase):
         self.assertEqual(cfg.getint('NRLayers'), 1)
 
     def test_no_runtime_identity_spoof(self):
-        source = (ROOT / 'src/NeuralRendering/Runtime.cpp').read_text()
+        source = (ROOT / 'src/NeuralRendering/Runtime.cpp').read_text(encoding="utf-8")
         self.assertNotIn('SignedRuntimePathScope', source)
         self.assertNotIn('VirtualProtect', source)
         self.assertIn('WinVerifyTrust', source)
         self.assertLess(source.index('WinVerifyTrust'), source.index('module_ = LoadLibraryExW'))
 
     def test_native_pipeline_is_live(self):
-        source = (ROOT / 'src/NativeDlaa.cpp').read_text()
-        self.assertIn('sl::DLSSMode::eDLAA', (ROOT / 'src/Streamline.cpp').read_text())
-        self.assertIn('InstallNativeDlaaHooks();', (ROOT / 'src/main.cpp').read_text())
+        source = (ROOT / 'src/NativeDlaa.cpp').read_text(encoding="utf-8")
+        self.assertIn('sl::DLSSMode::eDLAA', (ROOT / 'src/Streamline.cpp').read_text(encoding="utf-8"))
+        self.assertIn('InstallNativeDlaaHooks();', (ROOT / 'src/main.cpp').read_text(encoding="utf-8"))
         self.assertIn('context->SwapDeviceContextState(saved.Get(), nullptr)', source)
         self.assertIn('if (ok) d3d11Context->CopyResource', source)
 

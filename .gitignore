@@ -162,3 +162,5 @@ tmpfrag/
 # Local, pinned development dependencies and test packages
 .deps/
 package/
+
+.ci-logs/

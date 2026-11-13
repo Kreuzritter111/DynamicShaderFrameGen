@@ -64,17 +64,8 @@ namespace FrameGen
 		// evaluateFeature 回调 → slEvaluateFeature failed 28。实测：features 只有
 		// [DLSS_G, Reflex] 时日志 “kFeatureDLSS' context is missing” + Callback 0x0）
 		sl::Feature featuresDLSSG[] = { sl::kFeatureDLSS, sl::kFeatureDLSS_G, sl::kFeatureReflex };
-		// v0.25.4（Bug2 修复）：v0.25 已移除 DLSS-NR（NGXNR）并删除 sl.dlss_nr.dll，
-		// 但这里还残留 featuresNR（含 1004 NR feature）——provider=1（DLSSG）用它 →
-		// slInit 尝试加载 NR 插件（DLL 不存在）→ slInit 失败 → Streamline 未初始化 →
-		// DLSSG 打不开（“FSR 切 DLSS 后打不开”实锤）。DLSSG 统一用 featuresDLSSG。
-		// 注：kFeatureDirectSR=1003、NvPerf=1002、DLSS_RR=1001、DLSS_G=1000——
-		// 1004 是 NR 的相邻新枚举（dlss5-dx11-bridge 同源 SDK 版本验证），已随 NR 移除。
-		// v0.24.2：恢复 D3D11 DLSS 超分——v0.8.20 为 NR 验证强制 D3D12，导致
-		// EvaluateDLSS 跳过、DLSS feature 永不创建 → bridge（DLSS5 外挂 ReShade）
-		// 拦不到 CreateFeature → NR 无输入失效（用户实测 00:52）。
-		// provider=0（FSR3）→ D3D11 会话（DLSS 超分可用，bridge 可拦）；
-		// provider=1（DLSSG）→ D3D12（DLSSG 需要 D3D12）。
+        // DLSSG is requested only when FG is enabled. Native DLAA keeps a
+        // D3D11 session regardless of a provider left over in an older INI.
 		useD3D12 = a_settings.frameGeneration && a_settings.provider == 1;
 		pref.featuresToLoad = useD3D12 ? featuresDLSSG : featuresDLSS;
 		pref.numFeaturesToLoad = useD3D12 ? _countof(featuresDLSSG) : _countof(featuresDLSS);
@@ -94,7 +85,7 @@ namespace FrameGen
 		pref.showConsole = false;
 		pref.engine = sl::EngineType::eCustom;
 		pref.engineVersion = "1.0.0";
-		pref.projectId = "f8776929-c969-43bd-ac2b-294b4de58aac";  // 与 CS 相同（Streamline 注册项目）
+		pref.projectId = "7e90ab5b-8d32-41bf-b086-1869fb87cd7b"; // Plugin-specific development UUID; no NVIDIA entitlement is implied.
 		pref.renderAPI = useD3D12 ? sl::RenderAPI::eD3D12 : sl::RenderAPI::eD3D11;
 		// v0.5.11：eUseFrameBasedResourceTagging（frame-based tagging）——
 		// slSetTag 已弃用，dlss_g 插件要求 slSetTagForFrame + 此 flag
@@ -119,6 +110,13 @@ namespace FrameGen
 		slSetD3DDevice = reinterpret_cast<PFun_slSetD3DDevice*>(GetProcAddress(interposer, "slSetD3DDevice"));
 		slSetFeatureLoaded = reinterpret_cast<PFun_slSetFeatureLoaded*>(GetProcAddress(interposer, "slSetFeatureLoaded"));  // v0.32
 		slUpgradeInterface = reinterpret_cast<PFun_slUpgradeInterface*>(GetProcAddress(interposer, "slUpgradeInterface"));
+
+        if (!slInit || !slShutdown || !slIsFeatureSupported || !slIsFeatureLoaded ||
+            !slEvaluateFeature || !slSetTagForFrame || !slSetConstants ||
+            !slGetFeatureFunction || !slGetNewFrameToken || !slSetD3DDevice) {
+            SKSE::log::error("[Streamline] incompatible interposer: required exports are missing; initialization cancelled");
+            return;
+        }
 
 		if (SL_FAILED(result, slInit(pref, sl::kSDKVersion))) {
 			SKSE::log::error("[Streamline] slInit failed: {}", (int)result);

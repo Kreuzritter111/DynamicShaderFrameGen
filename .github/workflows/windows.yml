@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
+
 permissions:
   contents: read
 
@@ -51,18 +55,21 @@ jobs:
       - name: Offline regressions (real exit codes)
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force .ci-logs | Out-Null
           Get-ChildItem tools/regress_*.py | ForEach-Object {
-            python $_.FullName
+            python $_.FullName 2>&1 | Tee-Object ".ci-logs/$($_.BaseName).log"
             if ($LASTEXITCODE -ne 0) { throw "Regression failed: $($_.Name)" }
           }
-          python -m unittest discover -s tests -p 'test_*.py' -v
+          python -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | Tee-Object .ci-logs/unittest.log
           if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed' }
       - name: Bootstrap pinned vcpkg
         shell: cmd
         run: .deps\vcpkg\bootstrap-vcpkg.bat -disableMetrics
       - name: Configure, compile actual DLL, and test
-        shell: cmd
-        run: build_vs.bat
+        shell: pwsh
+        run: |
+          cmd /c build_vs.bat 2>&1 | Tee-Object .ci-logs/windows-build.log
+          if ($LASTEXITCODE -ne 0) { throw "Windows build failed with exit code $LASTEXITCODE" }
       - name: Package for MO2 (no third-party runtime DLLs)
         shell: pwsh
         run: |
@@ -83,6 +90,7 @@ jobs:
         with:
           name: windows-build-diagnostics
           path: |
+            .ci-logs/
             build/windows-release/CMakeCache.txt
             build/windows-release/CMakeFiles/CMakeConfigureLog.yaml
             .deps/vcpkg/buildtrees/**/config-*.log

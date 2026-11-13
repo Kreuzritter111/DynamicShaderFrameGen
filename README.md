@@ -1,5 +1,7 @@
 # DynamicShaderFrameGen
 
+> **SE 1.5.97 test branch:** see [audit, Windows build and MO2 test instructions](docs/SE1597_TESTING.md). Native DLAA has been restored for testing with FG off. DLSS 5 NR remains experimental: the public SDK reserves Feature 18, and in-game compatibility is not established. The historical feature descriptions below are not validation of this test build.
+
 An open-source SKSE plugin that adds **FSR 3.1 Frame Generation**,
 **NVIDIA DLSS Upscaling / DLAA** and **DLSS 5 Neural Rendering** to Skyrim
 Special Edition (**Anniversary Edition 1.6.1170** and **SE 1.5.97**), designed to
@@ -197,12 +199,14 @@ Requirements: Visual Studio 2022+ Build Tools (MSVC x64), CMake ≥ 3.24, Ninja,
 vcpkg (spdlog, directxtk, detours preinstalled), a local CommonLibSSE-NG clone.
 
 ```bat
-build_ninja.bat   :: loads VsDevCmd → cmake --preset NINJA → build → deploy
+build_vs.bat
 ```
 
-Output: `build\NINJA\DynamicShaderFrameGen.dll` (auto-deployed to
-`SKSE\Plugins\` under the mod folder configured in the script). The Streamline
-and FidelityFX runtimes are loaded at runtime from your own SDK installs.
+Use the pinned Windows Actions workflow or prepare `.deps/` as described in
+[the build and testing guide](docs/SE1597_TESTING.md). The script finds MSVC via
+vswhere and builds `build/windows-release/DynamicShaderFrameGen.dll`; deployment
+is never automatic. CI packages our DLL, HLSL sources and the native DLAA test
+profile as an MO2 ZIP. NVIDIA/AMD runtime DLLs are not redistributed.
 
 ---
 

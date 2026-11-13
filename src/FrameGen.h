@@ -98,7 +98,7 @@ namespace FrameGen
 		// 游戏窗口强制成无边框铺满屏幕（视觉等同全屏）+ swapchain 强制窗口化，
 		// 让帧生成在任何玩家显示设置下都能激活。
 		bool forceBorderless = true;   // 强制无边框窗口化（默认开）
-		bool frameGeneration = true;   // 帧生成（false = 仅 DLSS 超分/DLAA 无插帧）
+		bool frameGeneration = false;   // 帧生成（false = 仅 DLSS 超分/DLAA 无插帧）
 		// v0.7.24：DLSS 超分独立开关——4K 下 DLAA 重建每帧 ~3-5ms（原生 50→37→FG 100+→75）；
 		// 关掉回到 v0.6.2.2 纯插帧状态（100+ 帧，画面 = 引擎原生 4K）
 		bool enableUpscale = true;     // DLSS 超分/DLAA 重建（false = 仅 FSR3 插帧，帧数最高）
@@ -178,7 +178,7 @@ namespace FrameGen
 		// never be confused with "it was read and did nothing".
 		bool forceBackBufferCopy = false;  // INI ForceBackBufferCopy
 		int  provider = 0;             // 0=FSR3（AMD 插帧，默认） 1=DLSSG（NVIDIA 插帧）
-		int  qualityMode = 1;          // DLSS 模式：0=DLAA 1=Quality 2=Balanced 3=Performance 4=UltraPerformance
+		int  qualityMode = 0;          // DLSS 模式：0=DLAA 1=Quality 2=Balanced 3=Performance 4=UltraPerformance
 		// v0.41：渲染分辨率缩放（自定义 DRS）——引擎渲染分辨率 = 输出 × 该比例，DLSS
 		// 再把低分辨率画面放大回输出分辨率（真超分才有 NR/帧生成空间）。0 = 跟随
 		// QualityMode 档位表（旧行为）；>0 = 自定义比例（0.30-1.00，如 0.70 = 70%）。
@@ -313,9 +313,8 @@ namespace FrameGen
 		void EnsureBorderless();
 		HWND hwnd = nullptr;  // 游戏主窗口（CreateDevice hook 时记录）
 
-		// v0.50：DLSS 超分/DRS/Halton jitter 已全部拔掉（引擎回到 2560 原生渲染）。
-		// InstallDRSHook / OnMainUpdateJitter / InstallMainPostProcessingHook /
-		// OnMainPostProcessing 已移除。仅保留 DLSS5(DLSSNR) + FSR3 FG 串联。
+        // Native DLAA is implemented by NativeDlaa.cpp. Lower-resolution
+        // DLSS SR is not restored by this test branch.
 
 		// v0.7.13：安装 MenuManagerDrawInterfaceStart hook（CS 同款）——引擎 UI 绘制
 		// 开始前回调。此时把 DLSS 超分结果写入引擎 kFRAMEBUFFER（4K），UI 随后叠加

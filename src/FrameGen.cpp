@@ -155,7 +155,7 @@ namespace FrameGen
 			else if (key == "Provider")
 				settings.provider = std::clamp(readInt(line, 0), 0, 1);
 			else if (key == "FrameGeneration")
-				settings.frameGeneration = readBool(line, true);
+				settings.frameGeneration = readBool(line, false);
 			else if (key == "EnableUpscale")
 				settings.enableUpscale = readBool(line, true);   // v0.7.24：DLSS 超分开关
 			// DLSS5 Neural Rendering（内置 NGX Feature 18）——与帧生成互斥

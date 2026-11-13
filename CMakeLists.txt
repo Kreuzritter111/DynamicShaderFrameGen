@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(DynamicShaderFrameGen)
+project(DynamicShaderFrameGen LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -89,8 +89,6 @@ target_compile_options(${PROJECT_NAME} PUBLIC
 )
 
 # CommonLibSSE-NG 源码
-set(_CMAKE_CXX_IPO_MAY_BE_SUPPORTED_BY_COMPILER FALSE CACHE INTERNAL "skip IPO check")
-set(_CMAKE_C_IPO_MAY_BE_SUPPORTED_BY_COMPILER FALSE CACHE INTERNAL "skip IPO check")
 add_subdirectory(${CommonLibPath} ${CommonLibName} EXCLUDE_FROM_ALL)
 
 # 依赖：spdlog / directxtk（CommonLibSSE-NG 需要），从 vcpkg 预装库查找
