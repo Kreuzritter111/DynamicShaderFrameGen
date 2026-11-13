@@ -12,7 +12,7 @@
 using Microsoft::WRL::ComPtr;
 namespace PP = FrameGen::PlainPresent;
 struct Failure { HRESULT hr; const char* operation; };
-void Check(HRESULT hr, const char* operation) { std::cerr << "stage: " << operation << " hr=0x" << std::hex << static_cast<unsigned>(hr) << std::dec << "\n"; if (FAILED(hr)) throw Failure{hr, operation}; }
+void Check(HRESULT hr, const char* operation) { std::cerr << (FAILED(hr) ? "error: " : "stage: ") << operation << " hr=0x" << std::hex << static_cast<unsigned>(hr) << std::dec << "\n"; if (FAILED(hr)) throw Failure{hr, operation}; }
 void Require(bool ok, const char* what) { if (!ok) throw std::runtime_error(what); }
 
 class Smoke
@@ -34,6 +34,7 @@ public:
     ComPtr<ID3D12Resource> source, readback;
     std::array<ComPtr<ID3D12CommandAllocator>, 3> allocators;
     std::array<ComPtr<ID3D12GraphicsCommandList>, 3> lists;
+    std::array<ComPtr<ID3D12Resource>, 3> buffers;
     std::array<UINT64, 3> submitted{};
     UINT width = 160, height = 90;
     UINT64 serial = 0, timeline = 1;
@@ -105,6 +106,7 @@ public:
         Check(factory->CreateSwapChainForHwnd(queue.Get(), window, &desc, nullptr, nullptr, &chain), "CreateSwapChainForHwnd");
         Check(chain.As(&swap), "swapchain3");
         factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER);
+        Buffers();
         void* identity = nullptr;
         Check(PP::QueryBaseSwapChain(swap.Get(), __uuidof(IUnknown), &identity), "proxy IUnknown policy");
         Require(identity == static_cast<IUnknown*>(swap.Get()), "proxy identity changed");
@@ -115,7 +117,24 @@ public:
         Require(PP::QueryBaseSwapChain(swap.Get(), __uuidof(IUnknown), nullptr) == E_POINTER, "QI null out pointer");
         Resources();
     }
-    ~Smoke() { if (callbackInfo) callbackInfo->UnregisterMessageCallback(callbackCookie); if (window) DestroyWindow(window); }
+    ~Smoke()
+    {
+        // Present may append GPU work after the copy-completion fence. Drain
+        // before resource destruction, including when a checked call throws.
+        if (queue && complete && SUCCEEDED(queue->Signal(complete.Get(), ++serial)))
+            PP::Wait(complete.Get(), serial, 5000);
+        if (callbackInfo) callbackInfo->UnregisterMessageCallback(callbackCookie);
+        if (window) DestroyWindow(window);
+    }
+
+    void Buffers()
+    {
+        DXGI_SWAP_CHAIN_DESC1 desc{};
+        Check(swap->GetDesc1(&desc), "backbuffer descriptor");
+        Require(desc.BufferCount <= buffers.size(), "too many DXGI buffers");
+        for (UINT i = 0; i < desc.BufferCount; ++i)
+            Check(swap->GetBuffer(i, IID_PPV_ARGS(&buffers[i])), "retain backbuffer");
+    }
 
     void Resources()
     {
@@ -163,8 +182,8 @@ public:
         Check(context11->Signal(shared11.Get(), ready), "D3D11 Signal");
         context11->Flush();
         Check(queue->Wait(shared.Get(), ready), "D3D12 Wait");
-        ComPtr<ID3D12Resource> back;
-        Check(swap->GetBuffer(index, IID_PPV_ARGS(&back)), "current buffer");
+        const auto& back = buffers[index];
+        Require(back != nullptr, "missing current backbuffer");
         Check(PP::RecordCopy(lists[index].Get(), source.Get(), back.Get()), "RecordCopy");
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -203,11 +222,13 @@ public:
 
     void Resize(UINT requested)
     {
+        Check(queue->Signal(complete.Get(), ++serial), "drain after Present");
         Check(PP::Wait(complete.Get(), serial, 5000), "idle before resize");
         for (unsigned i = 0; i < 3; ++i) {
             Check(allocators[i]->Reset(), "resize allocator");
             Check(lists[i]->Reset(allocators[i].Get(), nullptr), "resize list");
             Check(lists[i]->Close(), "resize Close");
+            buffers[i].Reset();
         }
         width += 32; height += 18;
         DXGI_SWAP_CHAIN_DESC1 desc{};
@@ -215,6 +236,7 @@ public:
         const auto count = PP::ResizeCount(requested, desc.BufferCount);
         Check(swap->ResizeBuffers(count, width, height, DXGI_FORMAT_UNKNOWN,
             PP::ResizeFlags(0, desc.Flags)), "ResizeBuffers");
+        Buffers();
         Resources();
     }
 
@@ -241,9 +263,11 @@ int main()
 {
     AddVectoredExceptionHandler(1, [](EXCEPTION_POINTERS* exception) -> LONG {
         const auto* record = exception->ExceptionRecord;
-        std::fprintf(stderr, "native exception: code=0x%08lX address=%p\n", record->ExceptionCode,
-            record->ExceptionAddress);
-        std::fflush(stderr);
+        if (record->ExceptionCode != 0x406D1388 && record->ExceptionCode != 0x40010006) {
+            std::fprintf(stderr, "native exception: code=0x%08lX address=%p\n", record->ExceptionCode,
+                record->ExceptionAddress);
+            std::fflush(stderr);
+        }
         return EXCEPTION_CONTINUE_SEARCH;
     });
     std::cerr << "stage: entered WARP main\n";

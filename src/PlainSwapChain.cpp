@@ -137,7 +137,11 @@ namespace FrameGen
         // request for one buffer still needs two physical flip-model buffers.
         count = PlainPresent::ResizeCount(count, swapChainDesc.BufferCount);
         flags = PlainPresent::ResizeFlags(flags, swapChainDesc.Flags);
-        HRESULT hr = PlainPresent::Wait(plainCompletion.get(), plainSerial, kFenceWaitTimeoutMs);
+        // The per-frame fence precedes DXGI Present. Drain the queue AFTER the
+        // last Present as well before releasing any of its backbuffer objects.
+        HRESULT hr = commandQueue->Signal(plainCompletion.get(), ++plainSerial);
+        if (FAILED(hr)) return hr;
+        hr = PlainPresent::Wait(plainCompletion.get(), plainSerial, kFenceWaitTimeoutMs);
         if (FAILED(hr)) return hr;
         for (UINT i = 0; i < 3; ++i) {
             if (FAILED(hr = commandAllocators[i]->Reset())) return hr;

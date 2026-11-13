@@ -60,7 +60,8 @@ proxy. D3D12 completion, обратный shared-fence Signal и D3D11 Wait
 
 Present/resize сериализованы неблокирующей блокировкой: конкурирующий вызов
 возвращает WAS_STILL_DRAWING, не меняя ресурсы. Resize ждёт завершения GPU,
-освобождает старые backbuffer references/command recordings, получает новые
+ставит отдельный drain fence после последнего Present, затем освобождает старые
+backbuffer references/command recordings и получает новые
 буферы и пересоздаёт presentation-owned shared textures под фактический размер.
 Логический запрос legacy-приложения на один буфер преобразуется в два
 физических flip buffers; ALLOW_TEARING при resize сохраняется согласно DXGI.
