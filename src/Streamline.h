@@ -1,4 +1,4 @@
-﻿// DynamicShaderFrameGen (https://github.com/jatelop8/DynamicShaderFrameGen)
+// DynamicShaderFrameGen (https://github.com/jatelop8/DynamicShaderFrameGen)
 // Licensed under GPL-3.0-or-later WITH Modding Exception AND GPL-3.0 Linking Exception.
 // Derived from open-source projects (all GPL-3.0):
 //   - Skyrim Community Shaders (https://github.com/doodlum/skyrim-community-shaders)
@@ -359,6 +359,10 @@ namespace FrameGen
 			std::uint32_t a_mvecDepthW, std::uint32_t a_mvecDepthH, DXGI_FORMAT a_colorFormat,
 			bool a_enable = true);
 		// 返回是否成功（失败 → 调用方 Present 兜底直通，避免画面冻结）
+        bool EvaluateNativeDlaa(ID3D11DeviceContext* context, ID3D11Resource* color, ID3D11Resource* output,
+            ID3D11Resource* depth, ID3D11Resource* motion, std::uint32_t width, std::uint32_t height,
+            const FrameBuffer& frame, const Settings& settings);
+
 		bool EvaluateDLSSG(ID3D12GraphicsCommandList* a_cmdList,
 			ID3D12Resource* a_colorIn, ID3D12Resource* a_colorOut,
 			ID3D12Resource* a_depth, ID3D12Resource* a_motionVectors,

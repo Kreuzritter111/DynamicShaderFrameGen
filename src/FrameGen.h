@@ -301,6 +301,10 @@ namespace FrameGen
 		// 安装 D3D11CreateDeviceAndSwapChain IAT 钩子（main.cpp 启动时调用）
 		void InstallCreateDeviceHook();
 
+        void InstallNativeDlaaHooks();
+        void UpdateNativeDlaa(RE::BSGraphics::State* state);
+        void DrawNativeDlaa();
+
 		// 安装输入开关键（Home）——DataLoaded 后注册
 		void InstallInputHook();
 

@@ -1,53 +1,38 @@
 {
-    "version": 3,
-    "cmakeMinimumRequired": {
-        "major": 4,
-        "minor": 2,
-        "patch": 0
-    },
-    "configurePresets": [
-        {
-            "name": "common",
-            "hidden": true,
-            "cacheVariables": {
-                "SKSE_SUPPORT_XBYAK": "ON"
-            },
-            "binaryDir": "${sourceDir}/build/${presetName}"
-        },
-        {
-            "name": "no-vcpkg",
-            "hidden": true,
-            "cacheVariables": {
-                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchain-no-vcpkg.cmake",
-                "COMMONLIB_DIR": "D:/Modding/skyrim-community-shaders-dxr/extern/CommonLibSSE-NG",
-                "VCPKG_PREFIX": "E:/vcpkg-full/installed/x64-windows-static-md",
-                "STREAMLINE_DIR": "D:/Modding/extern/Streamline",
-                "ENABLE_SKYRIM_SE": "ON",
-                "ENABLE_SKYRIM_AE": "ON",
-                "ENABLE_SKYRIM_VR": "ON"
-            }
-        },
-        {
-            "name": "NINJA",
-            "inherits": [
-                "common",
-                "no-vcpkg"
-            ],
-            "generator": "Ninja",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_MAKE_PROGRAM": "E:/vcpkg-full/downloads/tools/ninja-1.13.2-windows/ninja.exe",
-                "PLUGIN_DEPLOY_DIR": "E:/EJ/mod/mods/DynamicShaderFrameGen"
-            }
-        }
-    ],
-    "buildPresets": [
-        {
-            "name": "NINJA",
-            "configurePreset": "NINJA",
-            "targets": [
-                "DynamicShaderFrameGen"
-            ]
-        }
-    ]
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-release",
+      "displayName": "Windows x64 Release (MSVC Developer Shell)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/.deps/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
+        "BUILD_TESTING": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
 }

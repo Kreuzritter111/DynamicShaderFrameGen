@@ -4,31 +4,41 @@ project(DynamicShaderFrameGen)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 独立 CommonLibSSE-NG（官方仓库）
-if(NOT DEFINED COMMONLIB_DIR)
-    set(COMMONLIB_DIR "D:/Modding/CommonLibSSE-NG")
+if(NOT WIN32 OR NOT MSVC)
+    message(FATAL_ERROR "DynamicShaderFrameGen requires Windows x64 and MSVC. Use the Windows Actions workflow.")
+endif()
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "Only x64 is supported")
 endif()
 
-# vcpkg 预装库（手动安装，不走 vcpkg 自动安装——规避 VS 检测 bug）
-if(NOT DEFINED VCPKG_PREFIX)
-    set(VCPKG_PREFIX "E:/vcpkg-full/installed/x64-windows-static-md")
-endif()
-
-# NVIDIA Streamline SDK（新版 2.12 头文件，支持 DLSSG/Reflex；旧版 CS extern 头缺 DLSS5 API）
-if(NOT DEFINED STREAMLINE_DIR)
-    set(STREAMLINE_DIR "D:/Modding/extern/Streamline")
-endif()
-
-# AMD FidelityFX SDK（头文件，创建 FG swapchain 用；本地浅克隆）
-if(NOT DEFINED FFX_DIR)
-    set(FFX_DIR "D:/Modding/extern/FidelityFX-SDK")
-endif()
+include(CTest)
+set(COMMONLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/CommonLibSSE-NG" CACHE PATH "CommonLibSSE-NG source")
+set(STREAMLINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/streamline" CACHE PATH "Official Streamline SDK")
+set(FFX_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/FidelityFX-SDK" CACHE PATH "Official FidelityFX SDK")
+foreach(_required
+    "${COMMONLIB_DIR}/CMakeLists.txt"
+    "${STREAMLINE_DIR}/include/sl.h"
+    "${STREAMLINE_DIR}/external/ngx-sdk/include/nvsdk_ngx.h"
+    "${FFX_DIR}/Kits/FidelityFX/api/include/ffx_api.hpp")
+    if(NOT EXISTS "${_required}")
+        message(FATAL_ERROR "Missing dependency: ${_required}. See docs/SE1597_TESTING.md")
+    endif()
+endforeach()
+# The audited plugin supports SE 1.5.97 and AE 1.6.1170, not VR or future layouts.
+set(ENABLE_SKYRIM_SE ON CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
+set(SKSE_SUPPORT_XBYAK ON CACHE BOOL "" FORCE)
+set(SKSE_SUPPORT_PATCH_SAFETY OFF CACHE BOOL "" FORCE)
+set(COMMONLIB_PREBUILT OFF CACHE STRING "" FORCE)
+set(BUILD_TESTS OFF CACHE BOOL "CommonLib tests" FORCE)
 
 set(CommonLibPath "${COMMONLIB_DIR}")
 set(CommonLibName "CommonLibSSE")
 
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp
+    src/NativeDlaa.cpp
     src/FrameGen.cpp
     src/DX12SwapChain.cpp
     src/Streamline.cpp
@@ -87,20 +97,23 @@ add_subdirectory(${CommonLibPath} ${CommonLibName} EXCLUDE_FROM_ALL)
 find_package(spdlog CONFIG REQUIRED)
 find_package(directxtk CONFIG REQUIRED)
 
-target_include_directories(${PROJECT_NAME} PRIVATE "${VCPKG_PREFIX}/include")
+
 target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/extern/imgui")
 target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/extern/imgui/backends")
 target_include_directories(${PROJECT_NAME} PRIVATE "${STREAMLINE_DIR}/include")
 # DLSS5 Neural Rendering: NGX SDK headers (nvsdk_ngx.h + helpers) ship inside Streamline SDK
 target_include_directories(${PROJECT_NAME} PRIVATE "${STREAMLINE_DIR}/external/ngx-sdk/include")
 target_include_directories(${PROJECT_NAME} PRIVATE "${FFX_DIR}/Kits")
-target_include_directories(${PROJECT_NAME} PRIVATE "D:/Modding/skyrim-community-shaders-dxr/extern/FidelityFX-SDK/framework/cauldron/framework/libs/pix")
+
 
 target_link_libraries(${PROJECT_NAME} PRIVATE CommonLibSSE::CommonLibSSE spdlog::spdlog)
 target_link_libraries(${PROJECT_NAME} PRIVATE d3d12.lib d3d11.lib dxgi.lib d3dcompiler.lib delayimp.lib)
 # v0.7.15：Detours（函数开头 detour，CS 同款）——MenuManagerDrawInterfaceStart hook。
 # write_branch 只能重定向现有 jmp/call，不能做函数 detour（原指令会丢 → 崩溃实锤）
-target_link_libraries(${PROJECT_NAME} PRIVATE "${VCPKG_PREFIX}/lib/detours.lib")
+find_path(DETOURS_INCLUDE_DIR detours/detours.h REQUIRED)
+find_library(DETOURS_LIBRARY NAMES detours REQUIRED)
+target_include_directories(${PROJECT_NAME} PRIVATE "${DETOURS_INCLUDE_DIR}")
+target_link_libraries(${PROJECT_NAME} PRIVATE "${DETOURS_LIBRARY}" version wintrust crypt32)
 
 # v0.5.2：d3d11 延迟加载（/DELAYLOAD）——ENB 整合包根因修复：
 # 游戏目录有 ENB 的 d3d11.dll 代理，SKSE 加载本插件时若静态解析 d3d11.dll →
@@ -129,4 +142,17 @@ if(DEFINED PLUGIN_DEPLOY_DIR)
             "${CMAKE_SOURCE_DIR}/Shaders"
             "${PLUGIN_DEPLOY_DIR}/Shaders"
     )
+endif()
+
+# Test-package contains our DLL, shaders and opt-in test profile only. Official
+# NVIDIA/AMD runtimes are not redistributed or modified by this build.
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION SKSE/Plugins)
+install(FILES profiles/SE1597-Native-DLAA.ini DESTINATION SKSE/Plugins RENAME DynamicShaderFrameGen.ini)
+install(DIRECTORY Shaders/ DESTINATION Shaders FILES_MATCHING PATTERN "*.hlsl" PATTERN "*.hlsli")
+install(FILES LICENSE EXCEPTIONS.md docs/SE1597_TESTING.md DESTINATION .)
+
+if(BUILD_TESTING)
+    add_executable(render_policy_tests tests/render_policy.cpp)
+    target_include_directories(render_policy_tests PRIVATE src)
+    add_test(NAME render_policy COMMAND render_policy_tests)
 endif()

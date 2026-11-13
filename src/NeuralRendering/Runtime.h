@@ -48,7 +48,7 @@ namespace NeuralRendering
 	enum class RuntimeStatus
 	{
 		NotProbed, NotFound, VersionUnavailable, UnsupportedVersion, LoadFailed, MissingExport,
-		Ready, InitializationFailed, CoreUnavailable, ParameterAllocationFailed, Initialized,
+		Ready, InitializationFailed, CoreUnavailable, ParameterAllocationFailed, Initialized, FeatureCreationFailed, FeatureEvaluationFailed,
 	};
 
 	class Runtime

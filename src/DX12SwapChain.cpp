@@ -15,6 +15,7 @@
 
 // 注意：CommonLib 头必须最先（DX12SwapChain.h 含 Windows API 头，REX::W32 要求）
 #include "FrameGen.h"
+#include "RenderPolicy.h"
 
 #include "DX12SwapChain.h"
 
@@ -107,7 +108,7 @@ namespace FrameGen
 		// 的 IAT hook 能拦到后续 D3D12CreateCommandQueue 调用并记录 queue（dlss_g 插件
 		// 靠它填充内部 queue 槽；之前 delayload d3d12 时 hook 拦不到 → queue null →
 		// Allocate 0xC0000005 崩溃，dump 反汇编 [rbx+0x20] 实锤）
-		Get().streamline.SetD3D12Device(d3d12Device.get());
+		if (dlssgMode) Get().streamline.SetD3D12Device(d3d12Device.get());
 
 		D3D12_COMMAND_QUEUE_DESC queueDesc{};
 		queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -127,7 +128,7 @@ namespace FrameGen
 	void DX12SwapChain::CreateSwapChain(IDXGIAdapter* adapter, DXGI_SWAP_CHAIN_DESC a_swapChainDesc, bool a_enableFrameGeneration, bool a_dlssgMode, std::uint32_t a_qualityMode)
 	{
 		// v0.27：dlssgMode 必须先赋值（CreateD3D12Device 内据此决定是否延迟 slInit）
-		dlssgMode = a_dlssgMode;
+		dlssgMode = a_enableFrameGeneration && a_dlssgMode;
 
 		// v0.52：记录本次构建实际生效的 Provider。Provider 是**一次性**读取的——它决定
 		// dlssgMode / BufferCount / D3D12 proxy 路径，全都在这里定型；运行中改 INI 或 GUI
@@ -168,11 +169,8 @@ namespace FrameGen
 		// v0.41：INI RenderResolutionScale >0 时优先用自定义比例（默认 0.70），
 		// 0 则回退 QualityMode 档位表（旧行为）。
 		{
-			const float kUpscaleRatios[5] = { 1.0f, 2.0f / 3.0f, 0.585f, 0.5f, 0.333f };
-			const std::uint32_t qm = a_qualityMode < 5 ? a_qualityMode : 0;
-			const float customScale = Get().settings.renderResolutionScale;
-			renderScaleX = renderScaleY =
-				customScale > 0.0f ? std::clamp(customScale, 0.30f, 1.0f) : kUpscaleRatios[qm];
+			renderScaleX = renderScaleY = RenderPolicy::Scale(
+                Get().settings.enableUpscale, static_cast<int>(a_qualityMode), Get().settings.renderResolutionScale);
 			renderWidth = static_cast<std::uint32_t>(std::max(1, static_cast<int>(swapChainDesc.Width * renderScaleX)));
 			renderHeight = static_cast<std::uint32_t>(std::max(1, static_cast<int>(swapChainDesc.Height * renderScaleY)));
 			SKSE::log::info("[FrameGen] Render scale {:.3f} -> {}x{} render / {}x{} output",
@@ -299,13 +297,13 @@ namespace FrameGen
 		// after creating desired device"——slUpgradeInterface 只认 DXGI/D3D11 接口，
 		// 不认 D3D12 device。SL 的 presentCommon 链挂 D3D11 device → evaluateFeature
 		// 回调注册需要它。D3D12 会话（Provider=1 DLSSG）由后面的 SetD3D12Device 提供。
-		{
+		if (dlssgMode) {
 			ID3D11Device5* devIf = d3d11Device.get();
 			Get().streamline.UpgradeInterface(reinterpret_cast<void**>(&devIf));
 			if (devIf && devIf != d3d11Device.get())
 				d3d11Device.attach(devIf);  // SL 返回新代理接口 → 接管（旧引用 SL proxy 持有）
 		}
-		Get().streamline.UpgradeInterface(reinterpret_cast<void**>(&swapChain));
+        if (dlssgMode) Get().streamline.UpgradeInterface(reinterpret_cast<void**>(&swapChain));
 
 		swapChainProxy = new DXGISwapChainProxy(swapChain);
 		// v0.7.10：proxy 告知渲染尺寸（GetDesc 用）
@@ -1679,7 +1677,7 @@ namespace FrameGen
 		// 惰性创建包 try/catch：失败降级直通（无插帧但有画面），不抛异常穿透 Present。
 		// v0.5.7（CS 方案）：depth 自建 R32_FLOAT（可共享），mvec 引擎格式原样（可共享）。
 		// v0.6：FSR3 FG（Provider=0）也需要 depth/mvec 共享纹理 → 条件去掉 dlssgMode 限制
-		if ((dlssgMode || FidelityFX::GetSingleton()->module) && (!depthWrapped || !mvecWrapped)) {
+		if ((dlssgMode || FidelityFX::GetSingleton()->module || fg.settings.neuralRenderingEnabled) && (!depthWrapped || !mvecWrapped)) {
 			static bool lazyFailLogged = false;
 			try {
 				if (auto* renderer = RE::BSGraphics::Renderer::GetSingleton()) {
@@ -1725,7 +1723,7 @@ namespace FrameGen
 		// v0.6：FSR3 FG 同样需要 → 条件去掉 dlssgMode 限制
 		// v0.7.8：depth/mvec 共享纹理固定 = 输出分辨率（4K，FSR3 FG 要求与 color 同尺寸），
 		// 引擎 depth/mvec 是渲染尺寸（低）→ 都走 shader 采样放大（CopyResource 尺寸不匹配）
-		if ((dlssgMode || FidelityFX::GetSingleton()->module) && depthWrapped && mvecWrapped) {
+		if ((dlssgMode || FidelityFX::GetSingleton()->module || fg.settings.neuralRenderingEnabled) && depthWrapped && mvecWrapped) {
 			if (auto* renderer = RE::BSGraphics::Renderer::GetSingleton()) {
 				auto& depthTex = renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kMAIN];
 				auto& mvecTex = renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMOTION_VECTOR];

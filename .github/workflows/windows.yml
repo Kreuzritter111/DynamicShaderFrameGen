@@ -1,0 +1,90 @@
+name: Windows x64 test package
+
+on:
+  push:
+    branches: [main, 'fix/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: alandtse/CommonLibSSE-NG
+          ref: 9955ae3b18dd0aedbebb58fa207a4b7180eb6d67
+          path: .deps/CommonLibSSE-NG
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: NVIDIAGameWorks/Streamline
+          ref: 625db07d4bca5abc67d781c42af7e7fb0761f1b6
+          path: .deps/streamline
+          sparse-checkout: |
+            include
+            external/ngx-sdk/include
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: GPUOpen-LibrariesAndSDKs/FidelityFX-SDK
+          ref: 7539ae8b6568ad29ed78a753404351daf3b5cca7
+          path: .deps/FidelityFX-SDK
+          sparse-checkout: |
+            Kits/FidelityFX/api/include
+            Kits/FidelityFX/framegeneration/include
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: microsoft/vcpkg
+          ref: ee12231b20c95013c6638d845d04c91559a1d1ff
+          path: .deps/vcpkg
+          persist-credentials: false
+      - name: Offline regressions (real exit codes)
+        shell: pwsh
+        run: |
+          Get-ChildItem tools/regress_*.py | ForEach-Object {
+            python $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Regression failed: $($_.Name)" }
+          }
+          python -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed' }
+      - name: Bootstrap pinned vcpkg
+        shell: cmd
+        run: .deps\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+      - name: Configure, compile actual DLL, and test
+        shell: cmd
+        run: build_vs.bat
+      - name: Package for MO2 (no third-party runtime DLLs)
+        shell: pwsh
+        run: |
+          cmake --install build/windows-release --prefix package
+          if ($LASTEXITCODE -ne 0) { throw 'Install failed' }
+          if (!(Test-Path package/SKSE/Plugins/DynamicShaderFrameGen.dll)) { throw 'DLL was not built' }
+          Get-FileHash package/SKSE/Plugins/DynamicShaderFrameGen.dll -Algorithm SHA256 | Format-List | Out-File package/SHA256.txt
+          git rev-parse HEAD | Out-File package/COMMIT.txt
+          Compress-Archive -Path package/* -DestinationPath DynamicShaderFrameGen-SE1597-test.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: DynamicShaderFrameGen-SE1597-test
+          path: DynamicShaderFrameGen-SE1597-test.zip
+          if-no-files-found: error
+      - name: Upload configure/build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-build-diagnostics
+          path: |
+            build/windows-release/CMakeCache.txt
+            build/windows-release/CMakeFiles/CMakeConfigureLog.yaml
+            .deps/vcpkg/buildtrees/**/config-*.log
+            .deps/vcpkg/buildtrees/**/install-*.log
+          if-no-files-found: ignore

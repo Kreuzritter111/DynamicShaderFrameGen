@@ -13,6 +13,8 @@
 
 #include <Windows.h>
 #include <Psapi.h>
+#include <wintrust.h>
+#include <softpub.h>
 #include <d3d12.h>
 #include <nvsdk_ngx.h>
 
@@ -71,7 +73,6 @@ namespace NeuralRendering
 		using CreateFeature = NVSDK_NGX_Result(NVSDK_CONV*)(ID3D12GraphicsCommandList*, NVSDK_NGX_Feature, NVSDK_NGX_Parameter*, NVSDK_NGX_Handle**);
 		using EvaluateFeature = NVSDK_NGX_Result(NVSDK_CONV*)(ID3D12GraphicsCommandList*, const NVSDK_NGX_Handle*, const NVSDK_NGX_Parameter*, PFN_NVSDK_NGX_ProgressCallback);
 		using ReleaseFeature = NVSDK_NGX_Result(NVSDK_CONV*)(NVSDK_NGX_Handle*);
-		using GetModuleFileNameWFunction = DWORD(WINAPI*)(HMODULE, LPWSTR, DWORD);
 
 		// ---- version resource helper (replaces CS Util::GetDllVersion) ----
 		struct DllVersion
@@ -106,13 +107,6 @@ namespace NeuralRendering
 			return std::filesystem::path(exePath).parent_path() / L"Data";
 		}
 
-		// ---- signed-runtime path proxy (CS SignedRuntimePathScope) ----
-		// nvngx_dlssnr.dll validates its own load path at Init; spoof its
-		// GetModuleFileNameW so it sees the proxy nvngx.dll beside it.
-		GetModuleFileNameWFunction g_originalGetModuleFileNameW = nullptr;
-		HMODULE g_callerModule = nullptr;
-		std::wstring g_spoofedRuntimePath;
-		std::uint32_t g_proxyHits = 0;
 
 		HMODULE FindNgxCoreModule()
 		{
@@ -128,93 +122,6 @@ namespace NeuralRendering
 			}
 			return nullptr;
 		}
-
-		DWORD WINAPI SignedRuntimeGetModuleFileNameW(HMODULE module, LPWSTR filename, DWORD size)
-		{
-			if (module == g_callerModule && filename && size && !g_spoofedRuntimePath.empty()) {
-				++g_proxyHits;
-				const DWORD length = static_cast<DWORD>(g_spoofedRuntimePath.size());
-				const DWORD copyLength = std::min(length, size - 1);
-				std::memcpy(filename, g_spoofedRuntimePath.data(), copyLength * sizeof(wchar_t));
-				filename[copyLength] = L'\0';
-				return copyLength < length ? size : length;
-			}
-			return g_originalGetModuleFileNameW ? g_originalGetModuleFileNameW(module, filename, size) : 0;
-		}
-
-		class SignedRuntimePathScope
-		{
-		public:
-			SignedRuntimePathScope(HMODULE runtime, const std::filesystem::path& ngxPath)
-			{
-				if (!runtime)
-					return;
-				GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-					reinterpret_cast<LPCWSTR>(&SignedRuntimeGetModuleFileNameW), &g_callerModule);
-				g_spoofedRuntimePath = ngxPath.wstring();
-				g_proxyHits = 0;
-
-				auto* base = reinterpret_cast<std::byte*>(runtime);
-				auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
-				if (dos->e_magic != IMAGE_DOS_SIGNATURE)
-					return;
-				auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
-				if (nt->Signature != IMAGE_NT_SIGNATURE)
-					return;
-				const auto& imports = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
-				if (!imports.VirtualAddress)
-					return;
-
-				auto* descriptor = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(base + imports.VirtualAddress);
-				for (; descriptor->Name; ++descriptor) {
-					if (!descriptor->OriginalFirstThunk)
-						continue;
-					auto* names = reinterpret_cast<IMAGE_THUNK_DATA*>(base + descriptor->OriginalFirstThunk);
-					auto* functions = reinterpret_cast<IMAGE_THUNK_DATA*>(base + descriptor->FirstThunk);
-					for (; names->u1.AddressOfData; ++names, ++functions) {
-						if (IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal))
-							continue;
-						auto* import = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(base + names->u1.AddressOfData);
-						if (std::strcmp(reinterpret_cast<const char*>(import->Name), "GetModuleFileNameW"))
-							continue;
-						slot_ = reinterpret_cast<void**>(&functions->u1.Function);
-						g_originalGetModuleFileNameW = reinterpret_cast<GetModuleFileNameWFunction>(*slot_);
-						DWORD oldProtection = 0;
-						if (VirtualProtect(slot_, sizeof(*slot_), PAGE_READWRITE, &oldProtection)) {
-							*slot_ = reinterpret_cast<void*>(&SignedRuntimeGetModuleFileNameW);
-							DWORD ignored = 0;
-							VirtualProtect(slot_, sizeof(*slot_), oldProtection, &ignored);
-							FlushInstructionCache(GetCurrentProcess(), slot_, sizeof(*slot_));
-							installed_ = true;
-						}
-						return;
-					}
-				}
-			}
-
-			~SignedRuntimePathScope()
-			{
-				if (installed_ && slot_) {
-					DWORD oldProtection = 0;
-					if (VirtualProtect(slot_, sizeof(*slot_), PAGE_READWRITE, &oldProtection)) {
-						*slot_ = reinterpret_cast<void*>(g_originalGetModuleFileNameW);
-						DWORD ignored = 0;
-						VirtualProtect(slot_, sizeof(*slot_), oldProtection, &ignored);
-						FlushInstructionCache(GetCurrentProcess(), slot_, sizeof(*slot_));
-					}
-				}
-				g_spoofedRuntimePath.clear();
-				g_callerModule = nullptr;
-				g_originalGetModuleFileNameW = nullptr;
-			}
-
-			[[nodiscard]] bool IsInstalled() const { return installed_; }
-			[[nodiscard]] std::uint32_t Hits() const { return g_proxyHits; }
-
-		private:
-			void** slot_ = nullptr;
-			bool installed_ = false;
-		};
 
 		std::filesystem::path ResolveRuntimePath(const std::filesystem::path& explicitPath)
 		{
@@ -270,6 +177,27 @@ namespace NeuralRendering
 		// ran at that earlier moment, and the override could not have taken effect.
 		SKSE::log::info("[DLSSNR] probe: module already resident before load = {} (v1.43)",
 			GetModuleHandleW(kRuntimeName) ? "yes" : "no");
+        WINTRUST_FILE_INFO file{};
+        file.cbStruct = sizeof(file);
+        file.pcwszFilePath = path_.c_str();
+        WINTRUST_DATA trust{};
+        trust.cbStruct = sizeof(trust);
+        trust.dwUIChoice = WTD_UI_NONE;
+        trust.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN;
+        trust.dwUnionChoice = WTD_CHOICE_FILE;
+        trust.pFile = &file;
+        trust.dwStateAction = WTD_STATEACTION_VERIFY;
+        trust.dwProvFlags = WTD_REVOCATION_CHECK_CHAIN;
+        GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+        const LONG signature = WinVerifyTrust(nullptr, &action, &trust);
+        trust.dwStateAction = WTD_STATEACTION_CLOSE;
+        WinVerifyTrust(nullptr, &action, &trust);
+        if (signature != ERROR_SUCCESS) {
+            status_ = RuntimeStatus::LoadFailed;
+            detail_ = std::format("runtime Authenticode verification failed 0x{:08X}; restore an official signed runtime and check certificate/revocation access", static_cast<std::uint32_t>(signature));
+            return false;
+        }
+        SKSE::log::warn("[DLSSNR] experimental Feature 18: public NGX declares Reserved18; signature verified, runtime left unmodified. Compatibility is not established.");
 		module_ = LoadLibraryExW(path_.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
 		if (!module_) {
 			status_ = RuntimeStatus::LoadFailed;
@@ -320,17 +248,11 @@ namespace NeuralRendering
 		}
 		std::error_code error;
 		std::filesystem::create_directories(writablePath, error);
-		SignedRuntimePathScope scope(static_cast<HMODULE>(module_), path_.parent_path() / L"nvngx.dll");
-		if (!scope.IsInstalled()) {
-			status_ = RuntimeStatus::InitializationFailed;
-			detail_ = "failed to install signed-runtime path proxy";
-			return false;
-		}
 		ngxResult_ = static_cast<std::uint32_t>(initialize(applicationId_, writablePath.c_str(), device,
 			static_cast<NVSDK_NGX_Version>(apiVersion_), nullptr));
 		if (ngxResult_ != NVSDK_NGX_Result_Success) {
 			status_ = RuntimeStatus::InitializationFailed;
-			detail_ = std::format("NGX init failed 0x{:08X}, proxyHits={}", ngxResult_, scope.Hits());
+			detail_ = std::format("NGX init failed 0x{:08X}; unmodified signed runtime, see NGX/driver logs", ngxResult_);
 			return false;
 		}
 		device_ = device;
@@ -371,9 +293,6 @@ namespace NeuralRendering
 		auto create = reinterpret_cast<CreateFeature>(GetProcAddress(static_cast<HMODULE>(module_), "NVSDK_NGX_D3D12_CreateFeature"));
 		auto evaluate = reinterpret_cast<EvaluateFeature>(GetProcAddress(static_cast<HMODULE>(module_), "NVSDK_NGX_D3D12_EvaluateFeature"));
 		auto release = reinterpret_cast<ReleaseFeature>(GetProcAddress(static_cast<HMODULE>(module_), "NVSDK_NGX_D3D12_ReleaseFeature"));
-		SignedRuntimePathScope scope(static_cast<HMODULE>(module_), path_.parent_path() / L"nvngx.dll");
-		if (!scope.IsInstalled())
-			return false;
 
 		const bool dimensionsChanged = featureInputWidth_[slot] != inputWidth || featureInputHeight_[slot] != inputHeight ||
 			featureOutputWidth_[slot] != outputWidth || featureOutputHeight_[slot] != outputHeight;
@@ -410,7 +329,8 @@ namespace NeuralRendering
 			NVSDK_NGX_Handle* handle = nullptr;
 			ngxResult_ = static_cast<std::uint32_t>(create(commandList, kFeatureDlssNr, parameters, &handle));
 			if (ngxResult_ != NVSDK_NGX_Result_Success || !handle) {
-				detail_ = std::format("Feature 18 create failed slot={} result=0x{:08X} proxyHits={}", slot, ngxResult_, scope.Hits());
+                status_ = RuntimeStatus::FeatureCreationFailed;
+				detail_ = std::format("Feature 18 create failed slot={} result=0x{:08X} (0xBAD00002=PlatformError, not proof of an unsupported Skyrim/GPU). No identity/path proxy is installed. Public SDK reserves Feature 18; a supported NVIDIA NR SDK/runtime contract is required.", slot, ngxResult_);
 				return false;
 			}
 			featureHandles_[slot] = handle;
@@ -496,6 +416,7 @@ namespace NeuralRendering
 		ngxResult_ = static_cast<std::uint32_t>(evaluate(commandList,
 			static_cast<NVSDK_NGX_Handle*>(featureHandles_[slot]), parameters, nullptr));
 		if (ngxResult_ != NVSDK_NGX_Result_Success) {
+			status_ = RuntimeStatus::FeatureEvaluationFailed;
 			detail_ = std::format(
 				"Feature 18 evaluate failed slot={} result=0x{:08X} input={}x{} output={}x{} scale={:.3f} "
 				"colorTex={}x{} depthTex={}x{} mvecTex={}x{}",
@@ -513,13 +434,12 @@ namespace NeuralRendering
 	{
 		if (!module_ || slot >= kMaxNRLayers)
 			return;
-		SignedRuntimePathScope scope(static_cast<HMODULE>(module_), path_.parent_path() / L"nvngx.dll");
 		auto release = reinterpret_cast<ReleaseFeature>(GetProcAddress(static_cast<HMODULE>(module_), "NVSDK_NGX_D3D12_ReleaseFeature"));
 		if (featureHandles_[slot] && release) {
 			const auto result = release(static_cast<NVSDK_NGX_Handle*>(featureHandles_[slot]));
 			if (result != NVSDK_NGX_Result_Success)
-				SKSE::log::warn("[DLSSNR] Feature 18 release failed slot={} result=0x{:08X} proxyInstalled={}",
-					slot, static_cast<std::uint32_t>(result), scope.IsInstalled());
+				SKSE::log::warn("[DLSSNR] Feature 18 release failed slot={} result=0x{:08X}",
+					slot, static_cast<std::uint32_t>(result));
 		}
 		featureHandles_[slot] = nullptr;
 		featureInputWidth_[slot] = featureInputHeight_[slot] = 0;
@@ -544,12 +464,11 @@ namespace NeuralRendering
 			}
 			parameters_ = nullptr;
 			auto shutdown = reinterpret_cast<ShutdownD3D12>(GetProcAddress(static_cast<HMODULE>(module_), "NVSDK_NGX_D3D12_Shutdown1"));
-			SignedRuntimePathScope scope(static_cast<HMODULE>(module_), path_.parent_path() / L"nvngx.dll");
-			if (shutdown) {
+				if (shutdown) {
 				const auto result = shutdown(device_);
 				if (result != NVSDK_NGX_Result_Success)
-					SKSE::log::warn("[DLSSNR] NGX shutdown failed result=0x{:08X} proxyInstalled={}",
-						static_cast<std::uint32_t>(result), scope.IsInstalled());
+					SKSE::log::warn("[DLSSNR] NGX shutdown failed result=0x{:08X}",
+						static_cast<std::uint32_t>(result));
 			}
 			device_->Release();
 			device_ = nullptr;
@@ -578,6 +497,8 @@ namespace NeuralRendering
 		case RuntimeStatus::CoreUnavailable: return "core-unavailable";
 		case RuntimeStatus::ParameterAllocationFailed: return "parameter-allocation-failed";
 		case RuntimeStatus::Initialized: return "initialized";
+        case RuntimeStatus::FeatureCreationFailed: return "feature-creation-failed";
+        case RuntimeStatus::FeatureEvaluationFailed: return "feature-evaluation-failed";
 		}
 		return "unknown";
 	}

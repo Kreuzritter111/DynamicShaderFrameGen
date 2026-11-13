@@ -6,6 +6,7 @@
 // Other components: Dear ImGui / CommonLibSSE-NG / Microsoft Detours (MIT).
 
 #include "FrameGen.h"
+#include "RenderPolicy.h"
 
 #include <SKSE/SKSE.h>
 #include <RE/Skyrim.h>
@@ -301,6 +302,13 @@ namespace FrameGen
 		// renderScale 默认保持 1.0（全分辨率，DLSS5 完整效果）——降分辨率虽提帧数，
 		// 但神经网络在低分辨率上分析会导致脸部重光照细节减少（“没效果”）。性能优化
 		// 交给 GUI 滑块由用户自行权衡，不再默认降。
+        if (settings.enableUpscale && !settings.frameGeneration) {
+            if (settings.qualityMode != 0 || settings.renderResolutionScale != 1.0f)
+                SKSE::log::warn("[DLAA] native-only path: overriding QualityMode={} RenderResolutionScale={} to 0/1.0",
+                    settings.qualityMode, settings.renderResolutionScale);
+            settings.qualityMode = 0;
+            settings.renderResolutionScale = 1.0f;
+        }
 		SKSE::log::info("[FrameGen] Config loaded: Enable={} ForceEnable={} ForceBorderless={} Provider={} FrameGeneration={} EnableUpscale={} QualityMode={} PresetDLSS={} SL_LogLevel={} ToggleKey={:#x} FpsOverlay={}",
 			settings.enableFrameGen, settings.forceEnable, settings.forceBorderless, settings.provider, settings.frameGeneration,
 			settings.enableUpscale, settings.qualityMode, settings.presetDLSS, settings.streamlineLogLevel, settings.toggleKey,
@@ -2030,7 +2038,7 @@ namespace FrameGen
 				// 漏了 Streamline 初始化 → featureDLSS=false → Present 里 EvaluateDLSS 跳过。
 				// provider=0 时 features=[kFeatureDLSS]，D3D11 渲染 API，模型缓存已就绪
 				// （dlss/versions/0/files/160_E658703.bin = 74MB 超分真模型）。
-				if (fg.settings.provider == 0) {
+				if (!RenderPolicy::UseDlssg(fg.settings.frameGeneration, fg.settings.provider)) {
 					// v0.25：dlssnr 准备已移除（NR 走 ReShade 外挂方案）
 					fg.streamline.LoadInterposer(fg.settings);
 					fg.streamline.SetD3DDevice(a_device);
@@ -2038,12 +2046,13 @@ namespace FrameGen
 					fg.streamline.PostDevice();
 				}
 				fg.dx12SwapChain.CreateSwapChain(adapter, *pDesc, fg.settings.frameGeneration, fg.settings.provider == 1, fg.settings.qualityMode);
+				if (!fg.dx12SwapChain.swapChain) return E_FAIL;
 				fg.dx12SwapChain.CreateInterop();
 				// v0.29（DLSSG ENB 兼容）：provider=1 的 SL 初始化已在 CreateSwapChain →
 				// CreateD3D12Device 内延迟完成（v0.27 slInit + v0.28 SetD3DDevice(D3D11) +
 				// SetD3D12Device）——此处补 feature 检测 + 函数绑定（漏则 featureDLSSG
 				// 恒 false → 插帧不工作；PostDevice 不调 → slDLSSGSetOptions 空指针）。
-				if (fg.settings.provider == 1) {
+				if (RenderPolicy::UseDlssg(fg.settings.frameGeneration, fg.settings.provider)) {
 					fg.streamline.CheckFeatures(adapter);
 					fg.streamline.PostDevice();
 				}
@@ -2058,11 +2067,11 @@ namespace FrameGen
 
 		// v0.6.2.2：FSR3 FG 初始化（旧裸建分支有，新共存路径漏了——module null → Present 不插帧）
 		// LoadFFX 从运行时 DLL 取函数表；SetupFrameGeneration 建 FG context（需 swapChainDesc/d3d12Device）
-		auto ffx = FidelityFX::GetSingleton();
-		if (!ffx->module)
-			ffx->LoadFFX();
-		if (ffx->module)
-			ffx->SetupFrameGeneration();
+        if (RenderPolicy::UseFsr(fg.settings.frameGeneration, fg.settings.provider)) {
+            auto ffx = FidelityFX::GetSingleton();
+            if (!ffx->module) ffx->LoadFFX();
+            if (ffx->module) ffx->SetupFrameGeneration();
+        }
 
 		return S_OK;
 	}
@@ -2166,7 +2175,7 @@ namespace FrameGen
 			else
 				fg.refreshRate = 0;
 			fg.lowRefreshRate = fg.refreshRate < 120;
-			if (fg.lowRefreshRate && !fg.settings.forceEnable)
+			if (fg.settings.frameGeneration && fg.lowRefreshRate && !fg.settings.forceEnable)
 				shouldProxy = false;
 			SKSE::log::info("[FrameGen] Refresh rate: {} Hz (low={}, force={})",
 				fg.refreshRate, fg.lowRefreshRate, fg.settings.forceEnable);
@@ -2191,8 +2200,8 @@ namespace FrameGen
 				FeatureLevels, SDKVersion, pSwapChainDesc, ppSwapChain, ppDevice, pFeatureLevel, ppImmediateContext);
 			if (SUCCEEDED(hr) && fg.dx12SwapChain.GetSwapChainProxy()) {
 				fg.d3d12SwapChainActive = true;
-				fg.fgActive.store(true);
-				SKSE::log::info("[FrameGen] D3D12 proxy active (ENB compatible) - frame generation ENABLED");
+				fg.fgActive.store(fg.settings.frameGeneration);
+				SKSE::log::info("[FrameGen] D3D12 proxy active (ENB compatible) - FrameGeneration={}", fg.settings.frameGeneration);
 			}
 			return hr;
 		}
@@ -2253,8 +2262,8 @@ namespace FrameGen
 					fg.d3d12SwapChainActive = true;
 					// proxy 就绪 → 帧生成默认开启（Home 键可切换）；feature 不支持时
 					// CreateD3D12Proxy 内已把 fgActive 置 false（直通模式）
-					fg.fgActive.store(true);
-					SKSE::log::info("[FrameGen] D3D12 proxy active - frame generation ENABLED");
+					fg.fgActive.store(fg.settings.frameGeneration);
+					SKSE::log::info("[FrameGen] D3D12 proxy active - FrameGeneration={}", fg.settings.frameGeneration);
 					return S_OK;
 				}
 				SKSE::log::error("[FrameGen] D3D11CreateDevice failed: {:#x}", (unsigned)hr);
@@ -2280,7 +2289,7 @@ namespace FrameGen
 		cameraFar = static_cast<float*>(camBase.get()) + 0x44 / 4;
 
 		// v0.3：FSR3 模式 → D3D11 设备设 SL（feature 检测/函数绑定在 CreateD3D12Proxy 统一做）
-		if (settings.provider == 0)
+		if (!RenderPolicy::UseDlssg(settings.frameGeneration, settings.provider))
 			streamline.SetD3DDevice(a_device);
 
 		// 上下文钩子（perFrame 相机缓存）——两模式都要
@@ -2313,7 +2322,7 @@ namespace FrameGen
 
 		// v0.6：FSR3 FG（Provider=0）——加载 AMD 模块 + 创建 FG context
 		// （移植自 doodlum/ENBFrameGeneration；dlssgMode=false 时 CreateSwapChain 已建 ffxSwapChainContext）
-		if (settings.provider == 0) {
+		if (RenderPolicy::UseFsr(settings.frameGeneration, settings.provider)) {
 			FidelityFX::GetSingleton()->LoadFFX();
 			FidelityFX::GetSingleton()->SetupFrameGeneration();
 		}
@@ -2323,6 +2332,7 @@ namespace FrameGen
 		// **不再用 featureDLSS（DLSS 超分）判断**——AMD 显卡没有 DLSS → 旧逻辑
 		// featureDLSS=false → FSR3 插帧被误关 → “很多电脑装后打不开”。
 		// provider=1（DLSSG）用 featureDLSSG。
+		if (!settings.frameGeneration) return;
 		const bool featureOk = settings.provider == 1 ?
 			streamline.featureDLSSG :
 			(FidelityFX::GetSingleton()->module != nullptr);

@@ -39,6 +39,7 @@ namespace
 			}
 			// 输入开关键（Home）——DataLoaded 后 BSInputDeviceManager 可用
 			FrameGen::Get().InstallInputHook();
+            FrameGen::Get().InstallNativeDlaaHooks();
 			// v0.50（用户拍板拔掉 DLSS 超分）：移除 InstallDRSHook + InstallMainPostProcessingHook。
 			// 引擎回到 2560 全分辨率渲染（无 DRS、无 DLSS 超分、无 Halton jitter），
 			// 只保留 DLSS5(DLSSNR) + FSR3 FG 串联。DLSS 超分/DRS/jitter 相关代码保留但不调用。
@@ -170,6 +171,10 @@ static void ArchivePreviousLog()
 
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
 {
+    if (a_skse->RuntimeVersion() != SKSE::RUNTIME_SSE_1_5_97 &&
+        a_skse->RuntimeVersion() != SKSE::RUNTIME_SSE_1_6_1170)
+        return false; // Only the audited SE/AE Steam hook offsets are supported.
+
 	// SKSE::Init 内部已自动初始化 spdlog 日志（CommonLibSSE-NG 4.x）
 	// v1.09: SKSE::Init opens the spdlog sink, which truncates the log file. Copy
 	// the previous session's log out of the way first, or the run that reproduced

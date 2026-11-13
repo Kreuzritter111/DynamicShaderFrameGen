@@ -1,4 +1,4 @@
-﻿// DynamicShaderFrameGen (https://github.com/jatelop8/DynamicShaderFrameGen)
+// DynamicShaderFrameGen (https://github.com/jatelop8/DynamicShaderFrameGen)
 // Licensed under GPL-3.0-or-later WITH Modding Exception AND GPL-3.0 Linking Exception.
 // Derived from open-source projects (all GPL-3.0):
 //   - Skyrim Community Shaders (https://github.com/doodlum/skyrim-community-shaders)
@@ -75,7 +75,7 @@ namespace FrameGen
 		// 拦不到 CreateFeature → NR 无输入失效（用户实测 00:52）。
 		// provider=0（FSR3）→ D3D11 会话（DLSS 超分可用，bridge 可拦）；
 		// provider=1（DLSSG）→ D3D12（DLSSG 需要 D3D12）。
-		useD3D12 = a_settings.provider == 1;
+		useD3D12 = a_settings.frameGeneration && a_settings.provider == 1;
 		pref.featuresToLoad = useD3D12 ? featuresDLSSG : featuresDLSS;
 		pref.numFeaturesToLoad = useD3D12 ? _countof(featuresDLSSG) : _countof(featuresDLSS);
 
@@ -2855,6 +2855,61 @@ namespace FrameGen
 		slPCLSetMarker(sl::PCLMarker::ePresentEnd, *frameToken);
 	}
 
+
+    bool Streamline::EvaluateNativeDlaa(ID3D11DeviceContext* context, ID3D11Resource* color,
+        ID3D11Resource* output, ID3D11Resource* depth, ID3D11Resource* motion,
+        std::uint32_t width, std::uint32_t height, const FrameBuffer& frame, const Settings& settings)
+    {
+        if (!initialized || useD3D12 || !featureDLSS || !slDLSSSetOptions || !context ||
+            !color || !output || !depth || !motion || !width || !height) return false;
+        PollMenuState();
+        const auto before = diag.constsOk;
+        auto& fg = Get();
+        CheckFrameConstants(frame, static_cast<float>(width) / height,
+            fg.cameraNear ? *fg.cameraNear : 1.0f, fg.cameraFar ? *fg.cameraFar : 10000.0f);
+        if (!frameToken || diag.constsOk == before) return false;
+        sl::DLSSOptions options{};
+        options.mode = sl::DLSSMode::eDLAA;
+        options.outputWidth = width;
+        options.outputHeight = height;
+        D3D11_TEXTURE2D_DESC desc{};
+        static_cast<ID3D11Texture2D*>(color)->GetDesc(&desc);
+        options.colorBuffersHDR = desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT ||
+            desc.Format == DXGI_FORMAT_R32G32B32A32_FLOAT ? sl::Boolean::eTrue : sl::Boolean::eFalse;
+        options.useAutoExposure = sl::Boolean::eTrue;
+        options.sharpness = settings.sharpness;
+        // Leave model selection to the official runtime unless explicitly requested.
+        switch (settings.presetDLSS) {
+        case 1: options.dlaaPreset = sl::DLSSPreset::ePresetJ; break;
+        case 2: options.dlaaPreset = sl::DLSSPreset::ePresetK; break;
+        case 3: options.dlaaPreset = sl::DLSSPreset::ePresetL; break;
+        case 4: options.dlaaPreset = sl::DLSSPreset::ePresetM; break;
+        default: break;
+        }
+        if (slDLSSSetOptions(viewport, options) != sl::Result::eOk) return false;
+        sl::Resource in{sl::ResourceType::eTex2d, color, 0};
+        sl::Resource out{sl::ResourceType::eTex2d, output, 0};
+        sl::Resource z{sl::ResourceType::eTex2d, depth, 0};
+        sl::Resource mv{sl::ResourceType::eTex2d, motion, 0};
+        sl::Extent native{0, 0, width, height};
+        sl::ResourceTag tags[]{
+            {&in, sl::kBufferTypeScalingInputColor, sl::ResourceLifecycle::eOnlyValidNow, &native},
+            {&out, sl::kBufferTypeScalingOutputColor, sl::ResourceLifecycle::eOnlyValidNow, &native},
+            {&z, sl::kBufferTypeDepth, sl::ResourceLifecycle::eOnlyValidNow, &native},
+            {&mv, sl::kBufferTypeMotionVectors, sl::ResourceLifecycle::eOnlyValidNow, &native}
+        };
+        if (slSetTagForFrame(*frameToken, viewport, tags, _countof(tags), context) != sl::Result::eOk)
+            return false;
+        sl::ViewportHandle view(viewport);
+        const sl::BaseStructure* inputs[]{&view};
+        const auto result = slEvaluateFeature(sl::kFeatureDLSS, *frameToken, inputs, 1, context);
+        if (result != sl::Result::eOk) {
+            static bool reported = false;
+            if (!reported) SKSE::log::error("[DLAA] evaluate failed: {}", static_cast<int>(result));
+            reported = true;
+        }
+        return result == sl::Result::eOk;
+    }
 
 	void Streamline::DestroyResources()
 	{
