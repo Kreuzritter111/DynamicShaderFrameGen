@@ -150,6 +150,7 @@ public:
     {
         MSG msg{}; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
         const UINT index = swap->GetCurrentBackBufferIndex();
+        Require(index < allocators.size(), "DXGI returned an invalid buffer index");
         std::cerr << "frame: " << serial << " index=" << index << " allocator=" << allocators[index].Get()
             << " need=" << submitted[index] << " completed=" << complete->GetCompletedValue() << "\n";
         Check(PP::Wait(complete.Get(), submitted[index], 5000), "allocator completion");
@@ -238,6 +239,13 @@ public:
 
 int main()
 {
+    AddVectoredExceptionHandler(1, [](EXCEPTION_POINTERS* exception) -> LONG {
+        const auto* record = exception->ExceptionRecord;
+        std::fprintf(stderr, "native exception: code=0x%08lX address=%p\n", record->ExceptionCode,
+            record->ExceptionAddress);
+        std::fflush(stderr);
+        return EXCEPTION_CONTINUE_SEARCH;
+    });
     std::cerr << "stage: entered WARP main\n";
     try {
         Smoke smoke;

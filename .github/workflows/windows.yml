@@ -81,16 +81,20 @@ jobs:
           }
           if ($warpStatus -ne 0) {
             if (Test-Path build/present-smoke/present_smoke.exe) {
-              & ./build/present-smoke/present_smoke.exe
-              $processStatus = $LASTEXITCODE
+              $probe = Start-Process ./build/present-smoke/present_smoke.exe -PassThru -NoNewWindow -RedirectStandardError .ci-logs/warp-native-stderr.log -RedirectStandardOutput .ci-logs/warp-native-stdout.log
+              if (!$probe.WaitForExit(60000)) { $probe.Kill(); throw 'Native WARP diagnostic timed out' }
+              $processStatus = $probe.ExitCode
               Write-Output ("::error title=WARP process exit::code={0} hex=0x{1:X8}" -f $processStatus, ($processStatus -band 0xffffffffL))
+              Select-String -Path .ci-logs/warp-native-stderr.log -Pattern 'native exception:|validation:|error:' | Select-Object -Last 5 | ForEach-Object {
+                Write-Output "::error title=Native GPU validation::$($_.Line)"
+              }
             }
             foreach ($library in @('d3d12.dll','d3d11.dll','dxgi.dll','d3d10warp.dll','msvcp140.dll','vcruntime140_1.dll')) {
               $file = Join-Path $env:windir "System32/$library"
               Write-Output "::notice title=Runtime dependency::$library exists=$(Test-Path $file)"
             }
             if (Test-Path build/present-smoke/Testing/Temporary/LastTest.log) {
-              Get-Content build/present-smoke/Testing/Temporary/LastTest.log | Select-Object -Last 40 | ForEach-Object {
+              Get-Content build/present-smoke/Testing/Temporary/LastTest.log | Select-Object -Last 12 | ForEach-Object {
                 $message = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
                 Write-Output "::error title=WARP diagnostic::$message"
               }
