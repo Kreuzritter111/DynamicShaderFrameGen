@@ -26,6 +26,7 @@ namespace
 	{
 		switch (a_msg->type) {
 		case SKSE::MessagingInterface::kDataLoaded:
+            FrameGen::Get().dataLoaded.store(true);
 			SKSE::log::info("[FrameGen] Data loaded - frame generation plugin ready");
 			// v1.52：共存开关检查（默认两个都是 1 = 与 v1.51 行为完全一致）。
 			// CommunityShaders 会 detour/thunk 同一批引擎函数头，两边都以为自己是链头
@@ -61,7 +62,7 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() noexcept {
 	return v;
 }();
 
-extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
+extern "C" DLLEXPORT bool __cdecl SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
 {
 	a_info->infoVersion = SKSE::PluginInfo::kVersion;
 	a_info->name = SKSEPlugin_Version.pluginName;
@@ -167,7 +168,7 @@ static void ArchivePreviousLog()
 	::FindClose(hf);
 }
 
-extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
+extern "C" DLLEXPORT bool __cdecl SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
 {
     if (a_skse->RuntimeVersion() != SKSE::RUNTIME_SSE_1_5_97 &&
         a_skse->RuntimeVersion() != SKSE::RUNTIME_SSE_1_6_1170)

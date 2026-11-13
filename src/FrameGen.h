@@ -253,6 +253,7 @@ namespace FrameGen
 	{
 	public:
 		Settings settings;
+        std::atomic<bool> dataLoaded{false};
 
 		// DLSS5 Neural Rendering 调优参数（GUI 滑块实时改，Apply 每帧传入；对齐 CS）
 		NeuralRendering::Tuning nrTuning;

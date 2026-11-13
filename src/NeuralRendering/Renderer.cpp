@@ -175,7 +175,7 @@ namespace NeuralRendering
 			// 语义是错的。
 			const std::uint32_t layersRequested = std::clamp<std::uint32_t>(tuning.layers, 1u, kMaxNRLayers);
 			std::uint32_t layersDone = 0;
-			bool firstLayerFailed = false;
+			bool layerFailed = false;
 			for (std::uint32_t layer = 0; layer < layersRequested; ++layer) {
 				ID3D12Resource* layerInput = (layer % 2 == 0) ? eye.color.resource12.Get() : eye.output.resource12.Get();
 				ID3D12Resource* layerOutput = (layer % 2 == 0) ? eye.output.resource12.Get() : eye.color.resource12.Get();
@@ -200,29 +200,21 @@ namespace NeuralRendering
 				for (auto& barrier : barriers)
 					std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
 				commandList->ResourceBarrier(static_cast<UINT>(std::size(barriers)), barriers);
-				if (!layerOk) {
-					// 第 0 层失败 = 旧版语义：NR 整条链路锁死（LatchFailure，见循环之后）。
-					// 第 k>=1 层失败（驱动不再允许创建第 k 个 Feature 18 实例，或该实例的
-					// evaluate 返回 InvalidParameter）**不锁死**：退回已经算好的层数。否则把
-					// 层数调高一次就把 DLSS5 整个弄没了 —— 那比看不到多层效果严重得多。
-					if (layer == 0) {
-						firstLayerFailed = true;
-						break;
-					}
-					static std::uint32_t layerFailLogged = 0;
-					if (++layerFailLogged % 300 == 1)
-						SKSE::log::warn("[DLSSNR] multi-layer: layer {}/{} failed ngx=0x{:08X} - keeping {} layer(s)",
-							layer, layersRequested, Runtime::Instance().NgxResult(), layersDone);
-					break;
-				}
+                if (!layerOk) {
+                    layerFailed = true;
+                    break;
+                }
 				layersDone = layer + 1;
 			}
-			// 注意：第 0 层失败也不能在 recording 状态下直接返回 —— EndD3D12 必须先跑完，
-			// 否则 interop 的 recording_ 永远为真，之后任何 BeginD3D12 都会被 E_UNEXPECTED 拒掉。
-			if (!interop.EndD3D12())
-				return LatchFailure("EndD3D12", interop.LastError());
-			if (firstLayerFailed)
-				return LatchFailure("Feature 18", static_cast<HRESULT>(Runtime::Instance().NgxResult()));
+            if (layerFailed) {
+                // Discard the complete list, including earlier layers: a failed
+                // NGX call makes the partially recorded list unsafe to execute.
+                interop.CancelD3D12();
+                return LatchFailure("Feature 18 (command list discarded)",
+                    static_cast<HRESULT>(Runtime::Instance().NgxResult()));
+            }
+            if (!interop.EndD3D12())
+                return LatchFailure("EndD3D12", interop.LastError());
 
 			if (layersRequested > 1) {
 				static std::uint32_t layerDiag = 0;

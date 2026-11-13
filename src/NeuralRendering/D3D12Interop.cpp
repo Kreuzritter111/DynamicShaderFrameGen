@@ -178,6 +178,22 @@ namespace NeuralRendering
 		return true;
 	}
 
+	bool D3D12Interop::CancelD3D12()
+	{
+		if (!initialized_ || !recording_ || recordingContext_ >= kCommandContextCount)
+			return RecordFailure(E_UNEXPECTED);
+		auto& commandContext = commandContexts_[recordingContext_];
+		recording_ = false;
+		recordingContext_ = kCommandContextCount;
+		// A failed third-party Create/Evaluate may have partially recorded commands.
+		// Close but never submit them. All shared resources remain in their actual
+		// pre-recording COMMON state; the recorded transitions never reached the GPU.
+		const HRESULT result = commandContext.commandList->Close();
+		if (FAILED(result)) return RecordFailure(result);
+		lastError_ = S_OK;
+		return true;
+	}
+
 	bool D3D12Interop::EndD3D12()
 	{
 		if (!initialized_ || !recording_ || recordingContext_ >= kCommandContextCount)

@@ -39,6 +39,7 @@ namespace NeuralRendering
 		bool CreateSharedTexture(const D3D11_TEXTURE2D_DESC& desc, SharedTexture& texture, const char* name);
 		bool BeginD3D12(ID3D12GraphicsCommandList** commandList);
 		bool EndD3D12();
+		bool CancelD3D12();
 		bool WaitForIdle();
 
 		[[nodiscard]] bool IsInitialized() const { return initialized_; }

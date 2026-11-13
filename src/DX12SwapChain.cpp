@@ -1805,7 +1805,8 @@ namespace FrameGen
 		// 方案在 DRS 失效时（kMAIN 恒 2560x1440，见 Upscale diag）取到的是画面左上角
 		// 裁剪，DLSS5 错位无效 + 超级性能冻结。DRS 失效是根因（kMAIN 不降到渲染分辨率），
 		// 需单独攻；此处先恢复 colorOut 全分辨率稳定态（DLSS5 有效果）。
-		if (fg.settings.neuralRenderingEnabled && !nrSuppressed) {
+		if (fg.settings.neuralRenderingEnabled && !nrSuppressed &&
+            fg.dataLoaded.load() && fg.GetFrameBuffer()) {
 			ID3D11Resource* nrColor = !dlssgMode
 				? (colorOutWrapped ? colorOutWrapped->resource11 : nullptr)
 				: (swapChainBufferWrapped ? swapChainBufferWrapped->resource11 : nullptr);

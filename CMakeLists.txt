@@ -98,6 +98,10 @@ find_package(directxtk CONFIG REQUIRED)
 
 target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/extern/imgui")
 target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/extern/imgui/backends")
+# d3dx12 and d3d12 declarations must come from the same pinned DirectX-Headers
+# package; mixing a newer d3dx12 with the runner's older system d3d12.h fails.
+find_path(DIRECTX_HEADERS_INCLUDE_DIR directx/d3d12.h REQUIRED)
+target_include_directories(${PROJECT_NAME} BEFORE PRIVATE "${DIRECTX_HEADERS_INCLUDE_DIR}/directx")
 target_include_directories(${PROJECT_NAME} PRIVATE "${STREAMLINE_DIR}/include")
 # DLSS5 Neural Rendering: NGX SDK headers (nvsdk_ngx.h + helpers) ship inside Streamline SDK
 target_include_directories(${PROJECT_NAME} PRIVATE "${STREAMLINE_DIR}/external/ngx-sdk/include")
