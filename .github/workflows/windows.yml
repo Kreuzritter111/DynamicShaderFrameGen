@@ -73,7 +73,13 @@ jobs:
         shell: pwsh
         run: |
           cmd /c build_vs.bat 2>&1 | Tee-Object .ci-logs/windows-build.log
-          if ($LASTEXITCODE -ne 0) { throw "Windows build failed with exit code $LASTEXITCODE" }
+          $buildStatus = $LASTEXITCODE
+          if (Test-Path build/present-smoke/Testing/Temporary/LastTest.log) {
+            Select-String -Path build/present-smoke/Testing/Temporary/LastTest.log -Pattern 'frames verified|SKIP:|Debug layer unavailable|D3D12 validation:' | ForEach-Object {
+              Write-Output "::notice title=WARP result::$($_.Line)"
+            }
+          }
+          if ($buildStatus -ne 0) { throw "Windows build failed with exit code $buildStatus" }
       - name: Package for MO2 (no third-party runtime DLLs)
         shell: pwsh
         run: |

@@ -119,6 +119,7 @@ public:
         HRESULT hr = device->OpenSharedHandle(handle, IID_PPV_ARGS(&source));
         CloseHandle(handle); Check(hr, "D3D12 OpenSharedHandle");
         D3D12_HEAP_PROPERTIES heap{}; heap.Type = D3D12_HEAP_TYPE_READBACK;
+        heap.CreationNodeMask = heap.VisibleNodeMask = 1;
         D3D12_RESOURCE_DESC buffer{};
         buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
         buffer.Width = ((width * 4 + 255) & ~255u) * height;
@@ -233,8 +234,10 @@ int main()
         if (!smoke.flipped) { std::cout << "SKIP: window presentation occluded in this runner session\n"; return 77; }
         return 0;
     } catch (const Failure& failure) {
-        std::cerr << failure.operation << " hr=0x" << std::hex << static_cast<unsigned>(failure.hr) << '\n';
-        if (failure.hr == DXGI_ERROR_NOT_CURRENTLY_AVAILABLE || failure.hr == DXGI_ERROR_UNSUPPORTED) return 77;
+        std::cerr << "error: " << failure.operation << " hr=0x" << std::hex << static_cast<unsigned>(failure.hr) << '\n';
+        if (failure.hr == DXGI_ERROR_NOT_CURRENTLY_AVAILABLE || failure.hr == DXGI_ERROR_UNSUPPORTED) {
+            std::cout << "SKIP: WARP/window capability unavailable at " << failure.operation << "\n"; return 77;
+        }
         return 1;
-    } catch (const std::exception& failure) { std::cerr << failure.what() << '\n'; return 1; }
+    } catch (const std::exception& failure) { std::cerr << "error: " << failure.what() << '\n'; return 1; }
 }
