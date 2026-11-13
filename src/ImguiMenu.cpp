@@ -615,16 +615,19 @@ namespace FrameGen
 		ImGui::TextWrapped("帧生成 + DLSS5 神经渲染（可实时调整）");
 		ImGui::TextWrapped("Frame Generation + DLSS5 Neural Rendering (live adjust)");
 		ImGui::TextDisabled("注意：DLSS 超分已在 v0.48 移除，菜单里没有超分开关。");
-		ImGui::TextDisabled("NOTE: DLSS upscaling was removed in v0.48 - there is no DLSS upscale switch.");
+		ImGui::TextDisabled("Native DLAA test path: EnableUpscale=1 and FrameGeneration=0. Lower-resolution DLSS SR is unavailable.");
 		ImGui::Separator();
 
 		ImGui::Checkbox("总开关  |  Enable (master)", &s.enableFrameGen);
 		// v0.7.7：FG 开关直接绑定运行时 fgActive——GUI 里点即生效，不再用 Home 短按
-		bool fgOn = a_fg.fgActive.load();
+		ImGui::BeginDisabled(!s.frameGeneration);
+		bool fgOn = s.frameGeneration && a_fg.fgActive.load();
 		if (ImGui::Checkbox("帧生成 FG  |  Frame Generation (FG)", &fgOn)) {
 			a_fg.fgActive.store(fgOn);
 			SKSE::log::info("[FrameGen] Frame generation {} (GUI)", fgOn ? "ENABLED" : "DISABLED");
 		}
+		ImGui::EndDisabled();
+        if (!s.frameGeneration) ImGui::TextDisabled("Frame Generation is disabled for this session (restart required to enable). ");
 		ImGui::Checkbox("强制启用（<120Hz）  |  Force Enable (<120Hz)", &s.forceEnable);
 		ImGui::Checkbox("帧数显示（右上角）  |  FPS Overlay (top-right)", &s.fpsOverlay);
 
@@ -834,6 +837,9 @@ namespace FrameGen
 		// Auto=跟随 QualityMode 档位表（旧行为）；自定义 0.30-1.00 实时生效（下帧 kMAIN 重建）。
 		// 默认 0.70（70% 渲染）：DLSS5/NR 场景下真超分空间 + 帧数大幅提升。
 		ImGui::Separator();
+        const bool nativeDlaa = s.enableUpscale && !s.frameGeneration;
+        if (nativeDlaa) ImGui::TextDisabled("Native DLAA: render scale locked to 100%%.");
+        ImGui::BeginDisabled(nativeDlaa);
 		bool autoScale = s.renderResolutionScale <= 0.0f;
 		if (ImGui::Checkbox("自动渲染缩放（跟随画质档位）  |  Auto Render Scale (follow Quality Mode)", &autoScale)) {
 			s.renderResolutionScale = autoScale ? 0.0f : 0.70f;  // 切自定义默认 70%
@@ -859,6 +865,7 @@ namespace FrameGen
 		// d3d12Fence，等于把渲染线程钉在 GPU 后面（v1.03b..v1.43 行为，base 36.08）。
 		// 关掉后若游戏卡死，勾回来即可（无需重编译）——卡死只会发生在 D3D11 队列
 		// 等一个永不 signal 的栅栏时（2026-09-18 18:23 那次）。
+        ImGui::EndDisabled();
 		ImGui::Separator();
 		bool busyWait = s.fenceWaitBusy;
 		if (ImGui::Checkbox("Present 里忙等栅栏（CPU 轮询 GPU）  |  Busy-wait fence in Present (CPU polls the GPU)", &busyWait)) {

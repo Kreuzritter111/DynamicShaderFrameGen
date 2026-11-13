@@ -77,7 +77,7 @@ namespace FrameGen
 
     void FrameGen::UpdateNativeDlaa(RE::BSGraphics::State* state)
     {
-        if (!hooksReady || !state || !streamline.featureDLSS || !settings.enableUpscale || !GetFrameBuffer())
+        if (!hooksReady || !settings.enableFrameGen || !state || !streamline.featureDLSS || !settings.enableUpscale || !GetFrameBuffer())
             return;
         auto& rt = state->GetRuntimeData();
         rt.dynamicResolutionPreviousWidthRatio = rt.dynamicResolutionWidthRatio;
@@ -94,7 +94,7 @@ namespace FrameGen
 
     void FrameGen::DrawNativeDlaa()
     {
-        if (!hooksReady || !settings.enableUpscale || !streamline.featureDLSS || !GetFrameBuffer())
+        if (!hooksReady || !settings.enableFrameGen || !settings.enableUpscale || !streamline.featureDLSS || !GetFrameBuffer())
             return;
         auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
         if (!renderer || !d3d11Device || !d3d11Context) return;
@@ -151,10 +151,11 @@ namespace FrameGen
         context->SwapDeviceContextState(isolated.Get(), &saved);
         const bool ok = streamline.EvaluateNativeDlaa(context.Get(), color.texture, output.Get(),
             depth.texture, motion.texture, width, height, *GetFrameBuffer(), settings);
+        // Copy while the engine RTV/SRV bindings are still isolated.
+        if (ok) context->CopyResource(color.texture, output.Get());
         context->SwapDeviceContextState(saved.Get(), nullptr);
         resolveHealthy = ok;
         if (wasHealthy && !ok) SKSE::log::error("[DLAA] resolve failed; custom jitter disabled until recovery");
-        if (ok) d3d11Context->CopyResource(color.texture, output.Get());
         static std::uint64_t frames = 0;
         if (++frames % 180 == 1)
             SKSE::log::info("[DLAA] evaluated={} native={}x{} frame={} FG=0", ok, width, height, engineFrameCount);
