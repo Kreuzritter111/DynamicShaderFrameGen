@@ -1,5 +1,6 @@
 #pragma once
 #include <Windows.h>
+#include <limits>
 #include <d3d12.h>
 #include <dxgi1_4.h>
 
@@ -63,7 +64,7 @@ namespace FrameGen::PlainPresent
     inline HRESULT Wait(ID3D12Fence* fence, UINT64 value, DWORD timeoutMs)
     {
         const auto completed = fence->GetCompletedValue();
-        if (completed == UINT64_MAX) return DXGI_ERROR_DEVICE_REMOVED;
+        if (completed == std::numeric_limits<UINT64>::max()) return DXGI_ERROR_DEVICE_REMOVED;
         if (completed >= value) return S_OK;
         HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
         if (!event) return HRESULT_FROM_WIN32(GetLastError());

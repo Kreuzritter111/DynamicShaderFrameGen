@@ -30,6 +30,8 @@
   backend вместо D3D11-facing proxy. Это нарушало identity адаптера и позволяло
   обходить его Present/GetBuffer. В plainMode базовые interfaces теперь
   возвращают proxy; не реализованные им расширения отклоняются с E_NOINTERFACE.
+  GetBuffer(0) для любых поддерживаемых texture/surface IID обращается к
+  логическому D3D11 shared texture, а не к D3D12 backbuffer.
 * ResizeBuffers передавался напрямую, хотя плагин удерживал реальные
   backbuffer resources и записанные command lists. Согласно DXGI это мешает
   корректному resize. Для flip model требуется resize после смены exclusive

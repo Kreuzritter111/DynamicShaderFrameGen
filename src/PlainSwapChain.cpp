@@ -4,6 +4,7 @@
 #include <d3d12sdklayers.h>
 #include <dxgidebug.h>
 #include <memory>
+#include <chrono>
 #include <vector>
 
 namespace FrameGen
@@ -103,6 +104,8 @@ namespace FrameGen
             if (FAILED(order)) return order;
             d3d11Context->Flush();
             m_stage = "plain d3d12 Present";
+            g_presentEnteredMs.store(static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count()));
             return swapChain->Present(sync, flags);
         });
         frameIndex = swapChain->GetCurrentBackBufferIndex();

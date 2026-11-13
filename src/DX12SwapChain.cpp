@@ -3114,6 +3114,8 @@ namespace FrameGen
 
 	HRESULT STDMETHODCALLTYPE DXGISwapChainProxy::GetBuffer(UINT Buffer, _In_ REFIID riid, _COM_Outptr_ void** ppSurface)
 	{
+        if (Get().dx12SwapChain.plainMode && Buffer == 0)
+            return Get().dx12SwapChain.swapChainBufferWrapped->resource11->QueryInterface(riid, ppSurface);
 		if (Buffer == 0) {
 			// 游戏/ENB 请求 backbuffer 纹理：返回我们的 D3D11 共享纹理（渲染目标）
 			if (riid == __uuidof(ID3D11Texture2D) || riid == __uuidof(IDXGISurface)) {
