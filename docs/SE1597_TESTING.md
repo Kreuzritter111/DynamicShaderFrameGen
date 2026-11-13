@@ -69,7 +69,10 @@ Subject читается и у файла с недействительной п
 именно подпись вызвала старый NGX PlatformError: в старой DLL был отдельный
 обход проверки пути вызывающего модуля.
 
-**Этот экземпляр не использовать для NR-теста. Не отключать WinVerifyTrust и
+**Этот экземпляр не должен быть виден игре в тестовом профиле, включая DLAA
+без NR: другие компоненты могут обнаруживать runtime до нашего Probe.
+Старый мод выключить только в отдельном MO2-профиле, файл оставить для сравнения.
+Не отключать WinVerifyTrust и
 не возвращать path proxy.** Новый wrapper отклоняет не прошедший проверку файл
 до собственной LoadLibraryExW; для bad digest типичен код `0x80096010`
 (`TRUST_E_BAD_DIGEST`). NGX Feature 18 с этим файлом не следует исследовать,
@@ -232,9 +235,12 @@ cmake --install build/windows-release --prefix package
 1. Сделайте копию MO2-профиля, включите отдельные INI/savegames. Сохраните прежний
    мод PureDark и его конфигурацию для отката. Не меняйте основной профиль.
 2. В тестовом профиле отключите Skyrim Upscaler и UpscalerBasePlugin, другие
-   upscaler/FG/NGX injection плагины. Не удаляйте их с диска. ENB NAT III оставьте.
+   upscaler/FG/NGX injection плагины и старый DynamicShaderFrameGen v0.48,
+   содержащий HashMismatch DLL. Не удаляйте файлы с диска. ENB NAT III оставьте.
+   Повреждённый NR runtime не переносите в новую установку даже для DLAA baseline.
 3. Скачайте Actions artifact и распакуйте его внешнюю ZIP-обёртку. Установите внутренний ZIP `DynamicShaderFrameGen-SE1597-test` из **успешного** Actions run
-   как отдельный мод с приоритетом выше старого DynamicShaderFrameGen и его INI в Overwrite. Проверьте выигрывающий INI в MO2. Корень должен содержать `SKSE/Plugins` и `Shaders`, без
+   как отдельный мод. Старый мод должен быть выключен в этом профиле; проверьте
+   выигрывающий INI и возможное переопределение из Overwrite в MO2. Корень должен содержать `SKSE/Plugins` и `Shaders`, без
    дополнительного `Data/`. Сверьте COMMIT.txt и SHA256.txt.
 4. Нужны уже установленные SKSE 2.0.20, SE Address Library и VC++ x64 runtime.
    Официальные NVIDIA runtime DLL приобретайте из разрешённого SDK/package
